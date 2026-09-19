@@ -1,0 +1,28 @@
+{
+  "name": "pi-tasks",
+  "version": "1.0.0",
+  "description": "Local Pi extension for per-session task tracking with dependency invariants and a persistent task widget.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "dependencies": {
+    "@earendil-works/pi-tui": "^0.85.1",
+    "typebox": "^1.1.24"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.0.18"
+  }
+}
