@@ -1,10 +1,20 @@
 {
-  "name": "pi-tasks",
+  "name": "@xvzc/pi-tasks",
   "version": "1.0.0",
   "description": "Local Pi extension for per-session task tracking with dependency invariants and a persistent task widget.",
   "type": "module",
-  "private": true,
+  "files": [
+    "src"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xvzc/pi-tasks.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "commitlint": "commitlint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -21,6 +31,8 @@
     "typebox": "^1.1.24"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
     "@types/node": "^22.0.0",
     "typescript": "^7.0.2",
     "vitest": "^4.0.18"

@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+.worktrees/
+.pi/
 *.tsbuildinfo
 .DS_Store
 .env*
