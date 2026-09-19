@@ -99,9 +99,9 @@ There is no Create-task command: tasks are created via `TaskCreate` only.
 
 A persistent `tasks` widget renders numeric ID, the `(<attempt>/<maxAttempts>)`
 counter, optional `[assignee]`,
-subject, and per-attempt timing with distinct status glyphs
-(`□` pending, `■` in progress, and `■` completed).
-Pending glyphs always render gray, even when `color` is set; in-progress and
+subject, and per-attempt timing with a filled `■` status glyph for pending,
+in-progress, and completed tasks. Pending glyphs always render gray, even when
+`color` is set; in-progress and
 completed glyphs render green by default. Subjects render in the default text
 color (white) while pending, green and bold while in progress, and gray with a
 strikethrough when completed. The optional `[assignee]` always uses the same

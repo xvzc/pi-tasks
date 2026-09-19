@@ -14,8 +14,9 @@
  * The header always shows the total count and the done count (including
  * `(0 done)`). It appends the global accumulated active (wall-clock union)
  * time only after a task has entered `in_progress`; the themed header renders
- * that time dim/gray. Statuses are visually distinct (`□` pending, `■` in progress, `■`
- * completed). The optional `[assignee]` always uses the same color, weight, and
+ * that time dim/gray. Every status uses a filled `■` glyph; color and text styling
+ * distinguish pending, in-progress, and completed tasks. The optional `[assignee]`
+ * always uses the same color, weight, and
  * decoration as the subject. Pending assignees and subjects use the default
  * text color while the pending glyph remains gray. The optional task `color`
  * tints only the in-progress and completed status glyphs; both render green
@@ -33,8 +34,8 @@ export type ThemeLike = {
   strikethrough(text: string): string;
 };
 
-export function statusGlyph(task: Task): string {
-  return task.status === "pending" ? "□" : "■";
+export function statusGlyph(_task: Task): string {
+  return "■";
 }
 
 function formatSecDuration(diffSec: number): string {
@@ -224,7 +225,7 @@ export function renderWidgetLines(tasks: Task[], theme: ThemeLike, width?: numbe
       } else {
         const assignee = assigneeText ? theme.fg("text", assigneeText) : "";
         const dependencies = blockedBySuffix(task);
-        lines.push(`  ${theme.fg("dim", "□")} ${idPart}${assignee} ${theme.fg("text", task.subject)}${dependencies ? theme.fg("dim", dependencies) : ""}${elapsedSuffix}`);
+        lines.push(`  ${theme.fg("dim", "■")} ${idPart}${assignee} ${theme.fg("text", task.subject)}${dependencies ? theme.fg("dim", dependencies) : ""}${elapsedSuffix}`);
       }
     }
     return fitLinesToWidth(lines, width);

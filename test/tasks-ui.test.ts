@@ -53,7 +53,7 @@ describe("detail content", () => {
 
   it("appends blockedBy ids to pending row subjects only", () => {
     expect(taskRowLabel(task({ id: 3, subject: "Hi", blockedBy: [1, 2] }))).toBe(
-      "□ #3 (0/9) Hi → (1, 2)",
+      "■ #3 (0/9) Hi → (1, 2)",
     );
     expect(taskRowLabel(task({ id: 3, subject: "Hi", status: "in_progress", blockedBy: [1, 2] }))).not.toContain("→");
     expect(taskRowLabel(task({ id: 3, subject: "Hi", status: "completed", blockedBy: [1, 2] }))).not.toContain("→");

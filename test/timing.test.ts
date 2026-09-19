@@ -266,7 +266,7 @@ describe("timing formatting", () => {
   });
 
   it("shows zero durations explicitly and hides pending durations", () => {
-    expect(formatTaskLine(widgetTask({ id: 1, subject: "a" }), T0)).toBe("  □ #1 (0/9) a");
+    expect(formatTaskLine(widgetTask({ id: 1, subject: "a" }), T0)).toBe("  ■ #1 (0/9) a");
     expect(
       formatTaskLine(widgetTask({ id: 1, subject: "a", status: "completed", tookMs: 0 }), T0),
     ).toBe("  ■ #1 (0/9) a 0s");

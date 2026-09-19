@@ -43,19 +43,19 @@ describe("plain rendering", () => {
   it("shows numeric id, attempt counter, optional [assignee], and subject", () => {
     // Pending lines show no duration; new attempts show `0s` on entry into `in_progress`.
     expect(formatTaskLine(task({ id: 3, subject: "Ship it" }), FIXED_NOW)).toBe(
-      `  □ #3 (0/9) Ship it`,
+      `  ■ #3 (0/9) Ship it`,
     );
     expect(formatTaskLine(task({ id: 3, subject: "Ship it", assignee: "api" }), FIXED_NOW)).toBe(
-      `  □ #3 (0/9) [api] Ship it`,
+      `  ■ #3 (0/9) [api] Ship it`,
     );
     expect(
       formatTaskLine(task({ id: 3, subject: "Ship it", attempt: 2, maxAttempts: 3 }), FIXED_NOW),
-    ).toBe(`  □ #3 (2/3) Ship it`);
+    ).toBe(`  ■ #3 (2/3) Ship it`);
   });
 
   it("shows blockedBy ids after the subject only while pending", () => {
     expect(formatTaskLine(task({ id: 4, subject: "Wait", blockedBy: [1, 3] }), FIXED_NOW)).toBe(
-      "  □ #4 (0/9) Wait → (1, 3)",
+      "  ■ #4 (0/9) Wait → (1, 3)",
     );
     expect(
       formatTaskLine(task({ id: 4, subject: "Run", status: "in_progress", blockedBy: [1, 3] }), FIXED_NOW),
@@ -65,8 +65,8 @@ describe("plain rendering", () => {
     ).not.toContain("→");
   });
 
-  it("distinguishes statuses with glyphs", () => {
-    expect(statusGlyph(task({ id: 1, subject: "a", status: "pending" }))).toBe("□");
+  it("uses filled glyphs for every status", () => {
+    expect(statusGlyph(task({ id: 1, subject: "a", status: "pending" }))).toBe("■");
     expect(statusGlyph(task({ id: 1, subject: "a", status: "in_progress" }))).toBe("■");
     expect(statusGlyph(task({ id: 1, subject: "a", status: "completed" }))).toBe("■");
   });
@@ -108,7 +108,7 @@ describe("plain rendering", () => {
 describe("themed rendering", () => {
   it("renders default glyph colors per status", () => {
     const pending = renderWidgetLines([task({ id: 1, subject: "a" })], fakeTheme);
-    expect(pending[1]).toMatch(/^  <dim>□<\/>/);
+    expect(pending[1]).toMatch(/^  <dim>■<\/>/);
     const active = renderWidgetLines([task({ id: 2, subject: "b", status: "in_progress" })], fakeTheme);
     expect(active[1]).toMatch(/^  <success>■<\/>/);
     const done = renderWidgetLines([task({ id: 3, subject: "c", status: "completed" })], fakeTheme);
@@ -149,7 +149,7 @@ describe("themed rendering", () => {
       [task({ id: 1, subject: "a", assignee: "api", color: "red", blockedBy: [2, 3] })],
       fakeTheme,
     );
-    expect(lines[1]).toContain("<dim>□</>");
+    expect(lines[1]).toContain("<dim>■</>");
     expect(lines[1]).toContain("<text> [api]</>");
     expect(lines[1]).toContain("<text>a</>");
     expect(lines[1]).toContain("<dim> → (2, 3)</>");
@@ -177,7 +177,7 @@ describe("themed rendering", () => {
   it("leaves unknown colors on the default glyph color instead of throwing", () => {
     const lines = renderWidgetLines([task({ id: 1, subject: "a", assignee: "p", color: "not-a-color" })], fakeTheme);
     expect(lines[1]).toContain("<text> [p]</>");
-    expect(lines[1]).toContain("<dim>□</>");
+    expect(lines[1]).toContain("<dim>■</>");
   });
 
   it("renders a same-width blank for in-progress glyphs when blink is off", () => {
@@ -247,7 +247,7 @@ describe("width-aware rendering", () => {
       fakeTheme,
       80,
     );
-    expect(lines[1]).toContain("<dim>□</>");
+    expect(lines[1]).toContain("<dim>■</>");
     expect(lines[1]).toContain("<text> [api]</>");
     expect(lines[1]).not.toContain("<error>");
     const completed = renderWidgetLines(
@@ -410,16 +410,16 @@ describe("in-progress blink", () => {
 describe("attempt counter rendering", () => {
   it("shows the counter immediately after the id in plain lines", () => {
     expect(formatTaskLine(task({ id: 7, subject: "s", attempt: 2, maxAttempts: 5 }), FIXED_NOW)).toBe(
-      `  □ #7 (2/5) s`,
+      `  ■ #7 (2/5) s`,
     );
     const lines = buildWidgetLines([task({ id: 1, subject: "a", attempt: 1, maxAttempts: 9 })], FIXED_NOW);
-    expect(lines[1]).toBe(`  □ #1 (1/9) a`);
+    expect(lines[1]).toBe(`  ■ #1 (1/9) a`);
   });
 
   it("shows the dim counter after the id for every status without changing glyph/subject styles", () => {
     const pending = renderWidgetLines([task({ id: 1, subject: "a", attempt: 0, maxAttempts: 9 })], fakeTheme);
     expect(pending[1]).toContain("<dim>#1 (0/9)</>");
-    expect(pending[1]).toMatch(/^  <dim>□<\/>/);
+    expect(pending[1]).toMatch(/^  <dim>■<\/>/);
     expect(pending[1]).toContain("<text>a</>");
 
     const active = renderWidgetLines(
@@ -443,7 +443,7 @@ describe("attempt counter rendering", () => {
   it("keeps the counter next to the id when an assignee is present", () => {
     expect(
       formatTaskLine(task({ id: 1, subject: "a", assignee: "api", attempt: 1, maxAttempts: 2 }), FIXED_NOW),
-    ).toBe(`  □ #1 (1/2) [api] a`);
+    ).toBe(`  ■ #1 (1/2) [api] a`);
     const lines = renderWidgetLines(
       [task({ id: 1, subject: "a", assignee: "api", attempt: 1, maxAttempts: 2 })],
       fakeTheme,
@@ -485,7 +485,7 @@ describe("elapsed duration", () => {
     // Future timestamps clamp to zero rather than going negative, and zero-valued output stays hidden.
     expect(formatElapsedDuration("2026-01-03T00:00:00.000Z", FIXED_NOW)).toBe("");
     expect(formatTaskLine(task({ id: 1, subject: "fresh", createdAt: "2026-01-02T01:01:01.000Z" }), FIXED_NOW)).toBe(
-      "  □ #1 (0/9) fresh",
+      "  ■ #1 (0/9) fresh",
     );
   });
 
@@ -498,7 +498,7 @@ describe("elapsed duration", () => {
       ],
       FIXED_NOW,
     );
-    expect(lines[1]).toBe("  □ #1 (0/9) a");
+    expect(lines[1]).toBe("  ■ #1 (0/9) a");
     expect(lines[2].endsWith(`b ${FIXED_ELAPSED}`)).toBe(true);
     expect(lines[3].endsWith("c 1m 30s")).toBe(true);
     expect(lines[3]).not.toContain("took");
