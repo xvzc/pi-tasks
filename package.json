@@ -1,6 +1,6 @@
 {
   "name": "@xvzc/pi-tasks",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Local Pi extension for per-session task tracking with dependency invariants and a persistent task widget.",
   "type": "module",
   "files": [
