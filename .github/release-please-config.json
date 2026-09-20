@@ -4,7 +4,8 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "package-name": "@xvzc/pi-tasks"
+      "package-name": "@xvzc/pi-tasks",
+      "include-component-in-tag": false
     }
   }
 }

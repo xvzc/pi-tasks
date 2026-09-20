@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.0.1](https://github.com/xvzc/pi-tasks/compare/pi-tasks-v1.0.0...pi-tasks-v1.0.1) (2026-09-19)
+## [1.0.1](https://github.com/xvzc/pi-tasks/compare/v1.0.0...v1.0.1) (2026-09-19)
 
 
 ### Bug Fixes
