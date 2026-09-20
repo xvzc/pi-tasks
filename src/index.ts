@@ -12,6 +12,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
+import { DEFAULT_CONFIG, loadPiTasksConfig, type PiTasksConfig } from "./config.js";
 import { TaskError, TaskStore, taskFilePath, turnStartStore } from "./store.js";
 import { createTasksViewer } from "./tasks-ui.js";
 import { isTaskStatus, type Task } from "./types.js";
@@ -31,7 +32,7 @@ const TaskCreateParams = Type.Object({
   color: Type.Optional(Type.String({ description: "Accent color name for the status glyph. Do not set unless the user explicitly requests a color." })),
   blockedBy: Type.Optional(BlockedBy),
   metadata: Type.Optional(Metadata),
-  maxAttempts: Type.Optional(Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER, description: "Per-task attempt cap. Defaults to 9." })),
+  maxAttempts: Type.Optional(Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER, description: "Explicit per-task attempt cap. Omit to use the configured defaultMaxAttempts (9 unless pi-tasks.json overrides it)." })),
 });
 
 const TaskUpdateParams = Type.Object({
@@ -91,7 +92,7 @@ interface WidgetUI {
   setWidget(key: string, content: unknown, options?: unknown): void;
 }
 
-function refreshWidget(ctx: ExtensionContext, store: TaskStore): void {
+function refreshWidget(ctx: ExtensionContext, store: TaskStore, config: PiTasksConfig = DEFAULT_CONFIG): void {
   try {
     const ui = ctx.ui as unknown as WidgetUI;
     if (!ui || typeof ui.setWidget !== "function") return;
@@ -104,7 +105,7 @@ function refreshWidget(ctx: ExtensionContext, store: TaskStore): void {
     const timing = store.activeTiming();
     ui.setWidget(
       WIDGET_KEY,
-      (tui: unknown, theme: ThemeLike) => createTaskWidget(snapshot, tui as TuiWidthLike, theme, undefined, timing),
+      (tui: unknown, theme: ThemeLike) => createTaskWidget(snapshot, tui as TuiWidthLike, theme, undefined, timing, config),
       { placement: "aboveEditor" },
     );
   } catch {
@@ -130,9 +131,11 @@ export function tasksMenuLabels(tasks: Task[]): [string, string, string] {
 }
 
 export default function (pi: ExtensionAPI) {
+  const config = loadPiTasksConfig();
+
   pi.on("turn_start", async (_event, ctx) => {
     const { store } = await turnStartStore(ctx.cwd, sessionIdOf(ctx));
-    refreshWidget(ctx, store);
+    refreshWidget(ctx, store, config);
   });
 
   pi.registerCommand("tasks", {
@@ -150,7 +153,7 @@ export default function (pi: ExtensionAPI) {
         try {
           await ctx.ui.custom<void>(
             (tui, theme, keybindings, done) =>
-              createTasksViewer(store.list(), { done: () => done(undefined as never), theme, tui, keybindings }),
+              createTasksViewer(store.list(), { done: () => done(undefined as never), theme, tui, keybindings, config }),
             { overlay: true, overlayOptions: { ...TASKS_OVERLAY_OPTIONS } },
           );
         } catch (error) {
@@ -171,7 +174,7 @@ export default function (pi: ExtensionAPI) {
         if (!confirmed) return;
         try {
           const removed = await store.clearCompleted();
-          refreshWidget(ctx, store);
+          refreshWidget(ctx, store, config);
           ctx.ui.notify(`Cleared ${removed.length} completed task(s).`);
         } catch (error) {
           ctx.ui.notify(
@@ -194,7 +197,7 @@ export default function (pi: ExtensionAPI) {
         if (!confirmed) return;
         try {
           const removed = await store.clearAll();
-          refreshWidget(ctx, store);
+          refreshWidget(ctx, store, config);
           ctx.ui.notify(`Cleared all ${removed} task(s).`);
         } catch (error) {
           ctx.ui.notify(
@@ -228,8 +231,8 @@ export default function (pi: ExtensionAPI) {
           blockedBy: params.blockedBy,
           metadata: params.metadata as Record<string, unknown> | undefined,
           maxAttempts: params.maxAttempts,
-        });
-        refreshWidget(ctx, store);
+        }, config.defaultMaxAttempts);
+        refreshWidget(ctx, store, config);
         return textResult(JSON.stringify(task, null, 2));
       } catch (error) {
         return errorResult(error instanceof TaskError ? error.message : String(error));
@@ -272,8 +275,8 @@ export default function (pi: ExtensionAPI) {
           metadata: params.metadata as Record<string, unknown> | undefined,
           appendLog: params.appendLog,
         });
-        refreshWidget(ctx, store);
-        if (previousStatus !== "in_progress" && updated.status === "in_progress" && updated.attempt === updated.maxAttempts) {
+        refreshWidget(ctx, store, config);
+        if (previousStatus !== "in_progress" && updated.status === "in_progress" && updated.maxAttempts > 0 && updated.attempt === updated.maxAttempts) {
           const warning = `Task #${updated.id} is running its final attempt (${updated.attempt}/${updated.maxAttempts}). No retries remain after this run.`;
           try {
             pi.sendMessage(
@@ -343,7 +346,7 @@ export default function (pi: ExtensionAPI) {
       const store = await TaskStore.load(taskFilePath(ctx.cwd, sessionIdOf(ctx)));
       try {
         await store.delete(params.id);
-        refreshWidget(ctx, store);
+        refreshWidget(ctx, store, config);
         return textResult(JSON.stringify(params, null, 2));
       } catch (error) {
         return errorResult(error instanceof TaskError ? error.message : String(error));

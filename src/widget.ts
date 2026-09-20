@@ -14,18 +14,21 @@
  * The header always shows the total count and the done count (including
  * `(0 done)`). It appends the global accumulated active (wall-clock union)
  * time only after a task has entered `in_progress`; the themed header renders
- * that time dim/gray. Every status uses a filled `■` glyph; color and text styling
+ * that time dim/gray. Every status uses its configured glyph character
+ * (a filled `■` by default); color and text styling
  * distinguish pending, in-progress, and completed tasks. The optional `[assignee]`
  * always uses the same color, weight, and
  * decoration as the subject. Pending assignees and subjects use the default
- * text color while the pending glyph remains gray. The optional task `color`
- * tints only the in-progress and completed status glyphs; both render green
- * by default. Elapsed/completed duration text renders dim/gray in themed lines
+ * text color while the pending glyph uses its configured default color (never
+ * the per-task `color`). The optional task `color`
+ * tints only the in-progress and completed status glyphs; those glyphs fall
+ * back to their configured default colors (green unless configured otherwise). Elapsed/completed duration text renders dim/gray in themed lines
  * and is appended plain after the subject in the text fallback.
  * In-progress glyphs blink by alternating with a same-width blank.
  */
 
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { DEFAULT_CONFIG, type PiTasksConfig } from "./config.js";
 import type { Task } from "./types.js";
 
 export type ThemeLike = {
@@ -34,8 +37,25 @@ export type ThemeLike = {
   strikethrough(text: string): string;
 };
 
-export function statusGlyph(_task: Task): string {
-  return "■";
+/** Configured status glyph character for a task. Defaults to the centralized config. */
+export function statusGlyph(task: Task, config: PiTasksConfig = DEFAULT_CONFIG): string {
+  if (task.status === "in_progress") return config.glyphs.inProgress.character;
+  if (task.status === "completed") return config.glyphs.completed.character;
+  return config.glyphs.pending.character;
+}
+
+/** Blank matching the glyph's visible width, so blinking custom glyphs keeps alignment. */
+export function blankGlyph(task: Task, config: PiTasksConfig = DEFAULT_CONFIG): string {
+  return " ".repeat(Math.max(1, visibleWidth(statusGlyph(task, config))));
+}
+
+/**
+ * The `(<attempt>/<maxAttempts>)` counter, or an empty string for unlimited
+ * tasks (`maxAttempts` 0). JSON tool payloads always keep both fields; only
+ * human-facing rendering hides the counter.
+ */
+export function attemptCounter(task: Task): string {
+  return task.maxAttempts === 0 ? "" : ` (${task.attempt}/${task.maxAttempts})`;
 }
 
 function formatSecDuration(diffSec: number): string {
@@ -131,10 +151,10 @@ export function formatActiveTotal(timing: ActiveTiming | undefined, tasks: Task[
   return formatMillisDuration(base + bonus) || "0s";
 }
 
-/** Plain-text line: `#<id> (<attempt>/<maxAttempts>) [assignee] subject`, a pending-only ` → (<blockedBy>)` suffix, and status-specific duration. No colors. */
-export function formatTaskLine(task: Task, nowMs: number = Date.now()): string {
+/** Plain-text line: `#<id> (<attempt>/<maxAttempts>) [assignee] subject`, a pending-only ` → (<blockedBy>)` suffix, and status-specific duration. No colors. The counter is omitted for unlimited tasks (`maxAttempts` 0). */
+export function formatTaskLine(task: Task, nowMs: number = Date.now(), config: PiTasksConfig = DEFAULT_CONFIG): string {
   const assignee = task.assignee !== undefined ? ` [${task.assignee}]` : "";
-  return `  ${statusGlyph(task)} #${task.id} (${task.attempt}/${task.maxAttempts})${assignee} ${task.subject}${blockedBySuffix(task)}${durationSuffix(task, nowMs)}`;
+  return `  ${statusGlyph(task, config)} #${task.id}${attemptCounter(task)}${assignee} ${task.subject}${blockedBySuffix(task)}${durationSuffix(task, nowMs)}`;
 }
 
 interface HeaderParts {
@@ -151,12 +171,12 @@ function buildHeaderParts(tasks: Task[], nowMs: number, timing?: ActiveTiming): 
 }
 
 /** Plain-text widget lines. Empty list yields no lines. `nowMs` fixes the elapsed clock for deterministic rendering; `timing` supplies the global union time. */
-export function buildWidgetLines(tasks: Task[], nowMs: number = Date.now(), timing?: ActiveTiming): string[] {
+export function buildWidgetLines(tasks: Task[], nowMs: number = Date.now(), timing?: ActiveTiming, config: PiTasksConfig = DEFAULT_CONFIG): string[] {
   if (tasks.length === 0) return [];
   const sorted = [...tasks].sort((a, b) => a.id - b.id);
   const { base, activeTotal } = buildHeaderParts(sorted, nowMs, timing);
   const header = activeTotal === undefined ? base : `${base} ${activeTotal}`;
-  return [header, ...sorted.map((task) => formatTaskLine(task, nowMs))];
+  return [header, ...sorted.map((task) => formatTaskLine(task, nowMs, config))];
 }
 
 /**
@@ -198,8 +218,8 @@ function fitLinesToWidth(lines: string[], width: number | undefined): string[] {
  * `nowMs` fixes the elapsed clock for deterministic rendering. Elapsed text
  * always renders dim; the plain fallback already includes it.
  */
-export function renderWidgetLines(tasks: Task[], theme: ThemeLike, width?: number, blinkOn = true, nowMs: number = Date.now(), timing?: ActiveTiming): string[] {
-  const plain = buildWidgetLines(tasks, nowMs, timing);
+export function renderWidgetLines(tasks: Task[], theme: ThemeLike, width?: number, blinkOn = true, nowMs: number = Date.now(), timing?: ActiveTiming, config: PiTasksConfig = DEFAULT_CONFIG): string[] {
+  const plain = buildWidgetLines(tasks, nowMs, timing, config);
   if (plain.length === 0) return plain;
   try {
     const sorted = [...tasks].sort((a, b) => a.id - b.id);
@@ -210,22 +230,23 @@ export function renderWidgetLines(tasks: Task[], theme: ThemeLike, width?: numbe
     const lines = [themedHeader];
     for (const task of sorted) {
       const assigneeText = task.assignee !== undefined ? ` [${task.assignee}]` : "";
-      const idPart = theme.fg("dim", `#${task.id} (${task.attempt}/${task.maxAttempts})`);
+      const idPart = theme.fg("dim", `#${task.id}${attemptCounter(task)}`);
       const suffix = durationSuffix(task, nowMs);
       const elapsedSuffix = suffix === "" ? "" : ` ${theme.fg("dim", suffix.trim())}`;
       const completedSubject = theme.fg("dim", task.subject);
       const completedAssignee = assigneeText ? theme.fg("dim", assigneeText) : "";
       if (task.status === "completed") {
-        const glyphColor = themeColorFor(task.color) ?? "success";
-        lines.push(`  ${theme.fg(glyphColor, "■")} ${idPart}${completedAssignee} ${completedSubject}${elapsedSuffix}`);
+        const glyphColor = themeColorFor(task.color) ?? themeColorFor(config.glyphs.completed.defaultColor) ?? "success";
+        lines.push(`  ${theme.fg(glyphColor, statusGlyph(task, config))} ${idPart}${completedAssignee} ${completedSubject}${elapsedSuffix}`);
       } else if (task.status === "in_progress") {
-        const glyphColor = themeColorFor(task.color) ?? "success";
+        const glyphColor = themeColorFor(task.color) ?? themeColorFor(config.glyphs.inProgress.defaultColor) ?? "success";
         const assignee = assigneeText ? theme.fg("success", theme.bold(assigneeText)) : "";
-        lines.push(`  ${theme.fg(glyphColor, blinkOn ? "■" : " ")} ${idPart}${assignee} ${theme.fg("success", theme.bold(task.subject))}${elapsedSuffix}`);
+        lines.push(`  ${theme.fg(glyphColor, blinkOn ? statusGlyph(task, config) : blankGlyph(task, config))} ${idPart}${assignee} ${theme.fg("success", theme.bold(task.subject))}${elapsedSuffix}`);
       } else {
+        const glyphColor = themeColorFor(config.glyphs.pending.defaultColor) ?? "dim";
         const assignee = assigneeText ? theme.fg("text", assigneeText) : "";
         const dependencies = blockedBySuffix(task);
-        lines.push(`  ${theme.fg("dim", "■")} ${idPart}${assignee} ${theme.fg("text", task.subject)}${dependencies ? theme.fg("dim", dependencies) : ""}${elapsedSuffix}`);
+        lines.push(`  ${theme.fg(glyphColor, statusGlyph(task, config))} ${idPart}${assignee} ${theme.fg("text", task.subject)}${dependencies ? theme.fg("dim", dependencies) : ""}${elapsedSuffix}`);
       }
     }
     return fitLinesToWidth(lines, width);
@@ -300,6 +321,7 @@ export function createTaskWidget(
   theme: ThemeLike,
   now?: NowProvider,
   timing?: ActiveTiming,
+  config: PiTasksConfig = DEFAULT_CONFIG,
 ): { render: (width?: number, nowMs?: number) => string[]; invalidate: () => void; dispose: () => void } {
   let blinkOn = true;
   let blinkTimer: ReturnType<typeof setInterval> | undefined;
@@ -324,7 +346,7 @@ export function createTaskWidget(
           : typeof live === "number" && Number.isFinite(live) && live > 0
             ? live
             : undefined;
-      return renderWidgetLines(snapshot, theme, resolved, blinkOn, resolveNow(now, nowMs), timing);
+      return renderWidgetLines(snapshot, theme, resolved, blinkOn, resolveNow(now, nowMs), timing, config);
     },
     invalidate: () => {},
     dispose: () => {

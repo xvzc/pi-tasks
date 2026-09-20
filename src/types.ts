@@ -21,7 +21,7 @@ export interface Task {
   status: TaskStatus;
   /** Number of entries into `in_progress`. Starts at 0, increments on pending/completed -> in_progress. */
   attempt: number;
-  /** Per-task immutable cap for `attempt`. Defaults to 9. */
+  /** Per-task immutable cap for `attempt`. Defaults to the configured defaultMaxAttempts (9 unless configured). 0 means unlimited attempts. */
   maxAttempts: number;
   /** IDs this task depends on. Defaults to []. */
   blockedBy: number[];

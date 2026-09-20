@@ -144,7 +144,7 @@ describe("themed rendering", () => {
     expect(done[1]).not.toContain("~");
   });
 
-  it("renders pending glyphs and dependencies dim while keeping the assignee and subject as text", () => {
+  it("renders pending glyphs in the configured default color while keeping dependencies dim and the assignee/subject as text", () => {
     const lines = renderWidgetLines(
       [task({ id: 1, subject: "a", assignee: "api", color: "red", blockedBy: [2, 3] })],
       fakeTheme,

@@ -2,13 +2,25 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import registerExtension from "../src/index.js";
 import { taskFilePath } from "../src/store.js";
 
 const dirs: string[] = [];
+let savedAgentDir: string | undefined;
+let hadAgentDir = false;
+
+beforeEach(async () => {
+  hadAgentDir = "PI_CODING_AGENT_DIR" in process.env;
+  savedAgentDir = process.env.PI_CODING_AGENT_DIR;
+  const agentDir = await mkdtemp(join(tmpdir(), "pi-task-tools-agent-"));
+  dirs.push(agentDir);
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+});
 
 afterEach(async () => {
+  if (hadAgentDir) process.env.PI_CODING_AGENT_DIR = savedAgentDir as string;
+  else delete process.env.PI_CODING_AGENT_DIR;
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 

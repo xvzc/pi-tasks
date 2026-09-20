@@ -2,6 +2,39 @@
 
 Local Pi extension for per-main-session task tracking.
 
+## Configuration
+
+Optional JSON file at `$PI_CODING_AGENT_DIR/extensions/pi-tasks.json`
+(resolved as `join(getAgentDir(), "extensions", "pi-tasks.json")`), loaded once
+when the extension registers:
+
+```json
+{
+  "defaultMaxAttempts": 9,
+  "glyphs": {
+    "inProgress": { "character": "■", "defaultColor": "green" },
+    "pending": { "character": "■", "defaultColor": "grey" },
+    "completed": { "character": "■", "defaultColor": "green" }
+  }
+}
+```
+
+- A missing file or missing fields fall back to the defaults above.
+- Partial `glyphs` objects merge with the defaults per glyph and per field,
+  so `{ "glyphs": { "inProgress": { "character": "▶" } } }` changes only
+  that character.
+- Malformed JSON or invalid values never crash startup: each problem is
+  reported as a warning and only the offending value falls back to its
+  default. `defaultMaxAttempts` must be a non-negative safe integer; glyph
+  `character`/`defaultColor` values must be non-empty strings.
+- `defaultMaxAttempts` is used when `TaskCreate` omits `maxAttempts`.
+  `0` means unlimited attempts: entry into `in_progress` always succeeds and
+  keeps incrementing `attempt`, no final-attempt warning fires, and the
+  `(<attempt>/<maxAttempts>)` counter is hidden in the widget and the
+  `/tasks` list/detail views. `attempt` and `maxAttempts` stay present in
+  JSON tool payloads. An explicit per-task `maxAttempts` still requires a
+  positive safe integer and cannot be 0.
+
 ## Stores
 
 One file per main session: `<cwd>/.pi/tasks/tasks-{sanitizedSessionId}.json`
@@ -39,8 +72,10 @@ wins). This is a pre-existing limitation.
 Exactly five tools; no convenience, dependency, or subagent tools:
 
 - `TaskCreate { subject, description, assignee?, color?, blockedBy?, metadata?, maxAttempts? }`
-  creates a `pending` task with `attempt` 0 and `maxAttempts` defaulting to 9.
-  `blockedBy` entries must exist (`TaskUpdate` follows the same rule).
+  creates a `pending` task with `attempt` 0 and `maxAttempts` defaulting to the
+  configured `defaultMaxAttempts` (9 unless `pi-tasks.json` overrides it;
+  0 means unlimited). An explicit `maxAttempts` must be a positive safe
+  integer. `blockedBy` entries must exist (`TaskUpdate` follows the same rule).
   `maxAttempts` is set once at creation and cannot be updated later.
 - `TaskUpdate { id, subject?, description?, assignee?|null, color?|null, status?, blockedBy?, metadata?, appendLog? }`
   patches a task. `metadata` shallow-merges; `appendLog` accepts a string and
@@ -49,7 +84,8 @@ Exactly five tools; no convenience, dependency, or subagent tools:
   `assignee: null` / `color: null` remove those fields; `blockedBy` replaces the whole list; every successful
   update refreshes `updatedAt` and never touches `createdAt`. Entering
   `in_progress` increments `attempt` and requires all dependencies completed;
-  entry is refused once `attempt` reaches `maxAttempts`. The per-attempt timer
+  entry is refused once `attempt` reaches `maxAttempts`, except for unlimited
+  tasks (`maxAttempts` 0), which always enter and keep incrementing. The per-attempt timer
   (`startedAt`) starts at zero only on a real non-`in_progress` →
   `in_progress` transition and is preserved by `in_progress` → `in_progress`
   updates. Transitioning to `completed` freezes the attempt into `tookMs`;
@@ -81,6 +117,8 @@ with live counts:
 - `View all tasks (N)` — centered overlay with the task list on the left and
   full details for the selected task on the right (status, id/attempts,
   assignee, description, blockedBy, timestamps/timing, metadata, log). The
+  attempt counter is omitted in rows and details for unlimited tasks
+  (`maxAttempts` 0); row glyphs use the configured characters. The
   outer border renders in the theme's `border` color (plain when theming is
   unavailable). Keys: the configured `tui.editor.cursorUp` /
   `tui.editor.cursorDown` bindings change selection, PageUp/PageDown scrolls
@@ -98,16 +136,20 @@ There is no Create-task command: tasks are created via `TaskCreate` only.
 ## Widget
 
 A persistent `tasks` widget renders numeric ID, the `(<attempt>/<maxAttempts>)`
-counter, optional `[assignee]`,
-subject, and per-attempt timing with a filled `■` status glyph for pending,
-in-progress, and completed tasks. Pending glyphs always render gray, even when
+counter (omitted for unlimited tasks with `maxAttempts` 0), optional `[assignee]`,
+subject, and per-attempt timing with the configured status glyph character for pending,
+in-progress, and completed tasks (a filled `■` by default). The pending glyph uses its
+configured default color (grey unless configured otherwise) even when a per-task
 `color` is set; in-progress and
-completed glyphs render green by default. Subjects render in the default text
+completed glyphs use their configured default colors (both green unless
+configured otherwise). Subjects render in the default text
 color (white) while pending, green and bold while in progress, and gray with a
 strikethrough when completed. The optional `[assignee]` always uses the same
 color, bold weight, and strikethrough decoration as the subject. Optional task
 `color` maps onto known theme accents for the in-progress and completed
-status glyphs only. `in_progress` lines append the running attempt duration
+status glyphs only, overriding the configured default color; unknown names
+fall back to that default (and then to the built-in green). Configured default
+color names resolve through the same mapping. `in_progress` lines append the running attempt duration
 from `startedAt` to now (`0s` at zero); `completed` lines append only the frozen
 `<duration>` (`0s` when zero); `pending` lines show no duration.
 The header shows the total count and only the done count (`● N task(s)
@@ -121,7 +163,7 @@ includes the same text without styling.
 Pure rendering accepts an explicit current time (plus optional union timing)
 for deterministic output. The
 in-progress glyph blinks by alternating
-with a same-width blank every 250 ms; the blink timer runs only while an
+with a blank matching the glyph's visible width every 250 ms; the blink timer runs only while an
 in-progress task is shown. A separate 1 s timer requests redraws only while
 an in-progress task is shown so elapsed text stays current. All timers stop when the widget is replaced or removed.
 Rendering

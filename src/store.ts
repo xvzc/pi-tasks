@@ -21,6 +21,7 @@ import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { DEFAULT_CONFIG } from "./config.js";
 import { isTaskStatus, type StoreData, type Task, type TaskLogEntry, type TaskStatus } from "./types.js";
 
 export class TaskError extends Error {
@@ -131,13 +132,13 @@ function parseTask(raw: unknown): Task {
   if (!isRecord(raw)) throw new TaskError("Each persisted task must be an object.");
   assertOnlyKeys(raw, TASK_KEYS, "Persisted task");
   assertValidId(raw.id as number);
-  if (typeof raw.maxAttempts !== "number" || !Number.isSafeInteger(raw.maxAttempts) || raw.maxAttempts <= 0) {
-    throw new TaskError("Persisted task maxAttempts must be a positive safe integer.");
+  if (typeof raw.maxAttempts !== "number" || !Number.isSafeInteger(raw.maxAttempts) || raw.maxAttempts < 0) {
+    throw new TaskError("Persisted task maxAttempts must be a non-negative safe integer.");
   }
   if (typeof raw.attempt !== "number" || !Number.isSafeInteger(raw.attempt) || raw.attempt < 0) {
     throw new TaskError("Persisted task attempt must be a non-negative safe integer.");
   }
-  if ((raw.attempt as number) > (raw.maxAttempts as number)) {
+  if ((raw.maxAttempts as number) > 0 && (raw.attempt as number) > (raw.maxAttempts as number)) {
     throw new TaskError("Persisted task attempt must not exceed maxAttempts.");
   }
   if (typeof raw.subject !== "string" || raw.subject.trim().length === 0) {
@@ -200,7 +201,11 @@ export interface TaskCreateInput {
   color?: string;
   blockedBy?: number[];
   metadata?: Record<string, unknown>;
-  /** Per-task attempt cap. Defaults to 9. Must be a positive safe integer. */
+  /**
+   * Explicit per-task attempt cap. Must be a positive safe integer when
+   * present; omit it to use the configured default (which may be 0 for
+   * unlimited attempts). 0 cannot be set explicitly.
+   */
   maxAttempts?: number;
 }
 
@@ -366,7 +371,12 @@ export class TaskStore {
     return task === undefined ? undefined : { ...task, blockedBy: [...task.blockedBy], metadata: { ...task.metadata }, log: cloneLog(task.log) };
   }
 
-  async create(input: TaskCreateInput): Promise<Task> {
+  /**
+   * Create a task. An omitted `maxAttempts` falls back to
+   * `defaultMaxAttempts` (a non-negative safe integer; 0 means unlimited).
+   * An explicit `maxAttempts` must be a positive safe integer.
+   */
+  async create(input: TaskCreateInput, defaultMaxAttempts: number = DEFAULT_CONFIG.defaultMaxAttempts): Promise<Task> {
     assertNoPrefix(input as unknown as Record<string, unknown>);
     if (typeof input.subject !== "string" || input.subject.trim().length === 0) {
       throw new TaskError("subject must be a non-empty string.");
@@ -383,8 +393,14 @@ export class TaskStore {
     assertIdList(blockedBy);
     const metadata = input.metadata ?? {};
     if (!isRecord(metadata)) throw new TaskError("metadata must be an object.");
-    const maxAttempts = input.maxAttempts ?? 9;
-    assertValidMaxAttempts(maxAttempts);
+    let maxAttempts: number;
+    if (input.maxAttempts !== undefined) {
+      assertValidMaxAttempts(input.maxAttempts);
+      maxAttempts = input.maxAttempts;
+    } else {
+      assertValidDefaultMaxAttempts(defaultMaxAttempts);
+      maxAttempts = defaultMaxAttempts;
+    }
 
     // An all-completed store resets atomically: validate the new task against
     // a fresh state and commit the replacement envelope (new task #1) with a
@@ -521,8 +537,13 @@ export class TaskStore {
     if (patch.status !== undefined) {
       if (!isTaskStatus(patch.status)) throw new TaskError(`Invalid status: ${String(patch.status)}.`);
       if (patch.status === "in_progress" && current.status !== "in_progress") {
-        if (current.attempt >= current.maxAttempts) {
+        if (current.maxAttempts > 0 && current.attempt >= current.maxAttempts) {
           throw new TaskError(`Task #${id} has reached the maximum number of attempts (${current.maxAttempts}).`);
+        }
+        if (current.attempt >= Number.MAX_SAFE_INTEGER) {
+          throw new TaskError(
+            `Task #${id} cannot enter in_progress: attempt counter has reached Number.MAX_SAFE_INTEGER.`,
+          );
         }
         task.attempt = current.attempt + 1;
       }
@@ -727,6 +748,12 @@ function validateDependencies(tasks: Map<number, Task>): void {
 function assertValidMaxAttempts(value: unknown): asserts value is number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
     throw new TaskError(`Invalid maxAttempts: ${String(value)}. Expected a positive safe integer.`);
+  }
+}
+
+function assertValidDefaultMaxAttempts(value: unknown): asserts value is number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new TaskError(`Invalid defaultMaxAttempts: ${String(value)}. Expected a non-negative safe integer.`);
   }
 }
 

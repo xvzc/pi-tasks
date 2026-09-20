@@ -7,21 +7,22 @@ import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tu
 import type { KeybindingsManager } from "@earendil-works/pi-tui";
 import type { Task } from "./types.js";
 import type { ThemeLike } from "./widget.js";
-import { blockedBySuffix, statusGlyph } from "./widget.js";
+import { attemptCounter, blockedBySuffix, statusGlyph } from "./widget.js";
+import { DEFAULT_CONFIG, type PiTasksConfig } from "./config.js";
 
 /** Visible detail rows in the right pane; PageUp/PageDown move by this amount. */
 export const TASK_VIEWER_PAGE_SIZE = 10;
 
-/** Single-line label for the left task list. */
-export function taskRowLabel(task: Task): string {
-  return `${statusGlyph(task)} #${task.id} (${task.attempt}/${task.maxAttempts}) ${task.subject}${blockedBySuffix(task)}`;
+/** Single-line label for the left task list. The counter is omitted for unlimited tasks (`maxAttempts` 0). */
+export function taskRowLabel(task: Task, config: PiTasksConfig = DEFAULT_CONFIG): string {
+  return `${statusGlyph(task, config)} #${task.id}${attemptCounter(task)} ${task.subject}${blockedBySuffix(task)}`;
 }
 
-/** Full detail lines for the right pane (plain text; the component truncates). */
+/** Full detail lines for the right pane (plain text; the component truncates). The attempt counter is omitted for unlimited tasks (`maxAttempts` 0). */
 export function buildTaskDetailLines(task: Task): string[] {
   const lines: string[] = [
     `Status: ${task.status}`,
-    `Task: #${task.id} (${task.attempt}/${task.maxAttempts})`,
+    `Task: #${task.id}${attemptCounter(task)}`,
     `Assignee: ${task.assignee ?? "(none)"}`,
     `Subject: ${task.subject}`,
     ...task.description.split("\n").map((line, index) => `${index === 0 ? "Description" : "           "}: ${line}`),
@@ -96,6 +97,8 @@ export interface TasksViewerOptions {
   keybindings?: Pick<KeybindingsManager, "matches">;
   /** Visible detail rows; defaults to TASK_VIEWER_PAGE_SIZE. */
   pageSize?: number;
+  /** Glyph characters for row labels; defaults to the centralized config. */
+  config?: PiTasksConfig;
 }
 
 export type TasksViewer = {
@@ -114,6 +117,7 @@ export type TasksViewer = {
  */
 export function createTasksViewer(tasks: Task[], options: TasksViewerOptions): TasksViewer {
   const snapshot = [...tasks].sort((a, b) => a.id - b.id);
+  const config = options.config ?? DEFAULT_CONFIG;
   const pageSize =
     typeof options.pageSize === "number" && Number.isFinite(options.pageSize) && options.pageSize > 0
       ? Math.floor(options.pageSize)
@@ -166,7 +170,7 @@ export function createTasksViewer(tasks: Task[], options: TasksViewerOptions): T
       if (innerWidth < 40) {
         lines.push(fit(header(), innerWidth));
         snapshot.forEach((task, index) => {
-          lines.push(fit(`${index === selected ? "> " : "  "}${taskRowLabel(task)}`, innerWidth));
+          lines.push(fit(`${index === selected ? "> " : "  "}${taskRowLabel(task, config)}`, innerWidth));
         });
         lines.push(fit("—", innerWidth));
         for (const line of visibleDetail) lines.push(fit(line, innerWidth));
@@ -179,7 +183,7 @@ export function createTasksViewer(tasks: Task[], options: TasksViewerOptions): T
       lines.push(fit(header(), innerWidth));
       const rowCount = Math.max(snapshot.length, visibleDetail.length);
       for (let i = 0; i < rowCount; i++) {
-        const leftRaw = i < snapshot.length ? `${i === selected ? "> " : "  "}${taskRowLabel(snapshot[i])}` : "";
+        const leftRaw = i < snapshot.length ? `${i === selected ? "> " : "  "}${taskRowLabel(snapshot[i], config)}` : "";
         const leftFit = fit(leftRaw, leftW);
         const leftPadded = leftFit + " ".repeat(Math.max(0, leftW - visibleWidth(leftFit)));
         const rightFit = rightW > 0 ? fit(visibleDetail[i] ?? "", rightW) : "";

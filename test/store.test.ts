@@ -507,7 +507,7 @@ describe("attempt limits", () => {
         TaskStore.load(await persistedPath({ version: 1, nextId: 2, tasks: [persistedTask(1, { attempt })] })),
       ).rejects.toThrow(/attempt/);
     }
-    for (const maxAttempts of [0, -2, 1.5, Number.MAX_SAFE_INTEGER + 1, "9" as unknown as number]) {
+    for (const maxAttempts of [-2, 1.5, Number.MAX_SAFE_INTEGER + 1, "9" as unknown as number]) {
       await expect(
         TaskStore.load(await persistedPath({ version: 1, nextId: 2, tasks: [persistedTask(1, { maxAttempts })] })),
       ).rejects.toThrow(/maxAttempts/);
@@ -517,6 +517,13 @@ describe("attempt limits", () => {
     ).rejects.toThrow(/attempt/);
   });
 
+  it("accepts persisted maxAttempts 0 as the unlimited sentinel without an attempt ceiling", async () => {
+    const store = await TaskStore.load(
+      await persistedPath({ version: 1, nextId: 2, tasks: [persistedTask(1, { maxAttempts: 0, attempt: 12 })] }),
+    );
+    expect(store.get(1)).toMatchObject({ attempt: 12, maxAttempts: 0 });
+  });
+
   it("round-trips attempt counters through the persisted envelope", async () => {
     const store = await freshStore();
     const task = await store.create({ subject: "a", description: "", maxAttempts: 2 });
@@ -524,6 +531,26 @@ describe("attempt limits", () => {
     const data = JSON.parse(await readFile(store.filePath, "utf8"));
     expect(data.tasks[0]).toMatchObject({ attempt: 1, maxAttempts: 2 });
     expect((await TaskStore.load(store.filePath)).get(task.id)).toMatchObject({ attempt: 1, maxAttempts: 2 });
+  });
+
+  it("rejects entry when the unlimited attempt counter reaches Number.MAX_SAFE_INTEGER without mutating state", async () => {
+    const path = await persistedPath({
+      version: 1,
+      nextId: 2,
+      tasks: [persistedTask(1, { status: "completed", attempt: Number.MAX_SAFE_INTEGER, maxAttempts: 0 })],
+    });
+    const store = await TaskStore.load(path);
+    const before = store.get(1);
+    expect(before).toMatchObject({ attempt: Number.MAX_SAFE_INTEGER, maxAttempts: 0, status: "completed" });
+    const beforeDisk = await readFile(store.filePath, "utf8");
+
+    await expect(
+      store.update(1, { status: "in_progress", subject: "leaked", metadata: { leaked: true } }),
+    ).rejects.toThrow(/Number\.MAX_SAFE_INTEGER/);
+
+    expect(store.get(1)).toEqual(before);
+    expect(await readFile(store.filePath, "utf8")).toBe(beforeDisk);
+    expect((await TaskStore.load(store.filePath)).get(1)).toEqual(before);
   });
 });
 
