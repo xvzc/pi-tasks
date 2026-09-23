@@ -7,26 +7,28 @@ import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tu
 import type { KeybindingsManager } from "@earendil-works/pi-tui";
 import type { Task } from "./types.js";
 import type { ThemeLike } from "./widget.js";
-import { attemptCounter, blockedBySuffix, statusGlyph } from "./widget.js";
+import { attemptCounter, blockedBySuffix, statusGlyphFor } from "./widget.js";
 import { DEFAULT_CONFIG, type PiTasksConfig } from "./config.js";
 
 /** Visible detail rows in the right pane; PageUp/PageDown move by this amount. */
 export const TASK_VIEWER_PAGE_SIZE = 10;
 
 /** Single-line label for the left task list. The counter is omitted for unlimited tasks (`maxAttempts` 0). */
-export function taskRowLabel(task: Task, config: PiTasksConfig = DEFAULT_CONFIG): string {
-  return `${statusGlyph(task, config)} #${task.id}${attemptCounter(task)} ${task.subject}${blockedBySuffix(task)}`;
+export function taskRowLabel(task: Task, config: PiTasksConfig = DEFAULT_CONFIG, tasks: readonly Task[] = [task]): string {
+  const deleted = task.status === "deleted" ? " [deleted]" : "";
+  return `${statusGlyphFor(task, tasks, config)} #${task.id}${attemptCounter(task)} ${task.subject}${deleted}${blockedBySuffix(task)}`;
 }
 
-/** Full detail lines for the right pane (plain text; the component truncates). The attempt counter is omitted for unlimited tasks (`maxAttempts` 0). */
-export function buildTaskDetailLines(task: Task): string[] {
+/** Full detail lines for the right pane (plain text; the component truncates). The attempt counter is omitted for unlimited tasks (`maxAttempts` 0). The Assignee row is shown only when `enableAssignee` is true. */
+export function buildTaskDetailLines(task: Task, config: PiTasksConfig = DEFAULT_CONFIG): string[] {
   const lines: string[] = [
     `Status: ${task.status}`,
     `Task: #${task.id}${attemptCounter(task)}`,
-    `Assignee: ${task.assignee ?? "(none)"}`,
+    ...(config.enableAssignee ? [`Assignee: ${task.assignee === undefined ? "(none)" : `@${task.assignee}`}`] : []),
     `Subject: ${task.subject}`,
     ...task.description.split("\n").map((line, index) => `${index === 0 ? "Description" : "           "}: ${line}`),
     `Blocked by: ${task.blockedBy.length === 0 ? "(none)" : task.blockedBy.map((id) => `#${id}`).join(", ")}`,
+    ...(task.reviewOf.length === 0 ? [] : [`Review of: ${task.reviewOf.map((id) => `#${id}`).join(", ")}`]),
     `Created: ${task.createdAt}`,
     `Updated: ${task.updatedAt}`,
   ];
@@ -126,7 +128,7 @@ export function createTasksViewer(tasks: Task[], options: TasksViewerOptions): T
   let detailOffset = 0;
 
   const detailLines = (): string[] =>
-    snapshot.length === 0 ? [] : buildTaskDetailLines(snapshot[Math.min(selected, snapshot.length - 1)]);
+    snapshot.length === 0 ? [] : buildTaskDetailLines(snapshot[Math.min(selected, snapshot.length - 1)], config);
 
   function maxOffset(): number {
     return Math.max(0, detailLines().length - pageSize);
@@ -162,7 +164,7 @@ export function createTasksViewer(tasks: Task[], options: TasksViewerOptions): T
         return addBorder([fit(header(), innerWidth), fit("No tasks.", innerWidth), fit(HINT, innerWidth)], width, options.theme);
       }
       const selectedTask = snapshot[Math.min(selected, snapshot.length - 1)];
-      const allDetail = buildTaskDetailLines(selectedTask);
+      const allDetail = buildTaskDetailLines(selectedTask, config);
       const offset = Math.min(detailOffset, Math.max(0, allDetail.length - pageSize));
       const visibleDetail = allDetail.slice(offset, offset + pageSize);
 
@@ -170,7 +172,7 @@ export function createTasksViewer(tasks: Task[], options: TasksViewerOptions): T
       if (innerWidth < 40) {
         lines.push(fit(header(), innerWidth));
         snapshot.forEach((task, index) => {
-          lines.push(fit(`${index === selected ? "> " : "  "}${taskRowLabel(task, config)}`, innerWidth));
+          lines.push(fit(`${index === selected ? "> " : "  "}${taskRowLabel(task, config, snapshot)}`, innerWidth));
         });
         lines.push(fit("—", innerWidth));
         for (const line of visibleDetail) lines.push(fit(line, innerWidth));
@@ -183,7 +185,7 @@ export function createTasksViewer(tasks: Task[], options: TasksViewerOptions): T
       lines.push(fit(header(), innerWidth));
       const rowCount = Math.max(snapshot.length, visibleDetail.length);
       for (let i = 0; i < rowCount; i++) {
-        const leftRaw = i < snapshot.length ? `${i === selected ? "> " : "  "}${taskRowLabel(snapshot[i], config)}` : "";
+        const leftRaw = i < snapshot.length ? `${i === selected ? "> " : "  "}${taskRowLabel(snapshot[i], config, snapshot)}` : "";
         const leftFit = fit(leftRaw, leftW);
         const leftPadded = leftFit + " ".repeat(Math.max(0, leftW - visibleWidth(leftFit)));
         const rightFit = rightW > 0 ? fit(visibleDetail[i] ?? "", rightW) : "";

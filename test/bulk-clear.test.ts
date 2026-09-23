@@ -31,8 +31,10 @@ describe("clearCompleted", () => {
     const dep = await store.create({ subject: "dep", description: "" });
     const main = await store.create({ subject: "main", description: "", blockedBy: [dep.id] });
     const solo = await store.create({ subject: "solo", description: "" });
-    await store.update(dep.id, { status: "completed" });
-    await store.update(solo.id, { status: "completed" });
+    await store.update(dep.id, { status: "in_progress", appendLog: "note" });
+    await store.update(dep.id, { status: "completed", appendLog: "note" });
+    await store.update(solo.id, { status: "in_progress", appendLog: "note" });
+    await store.update(solo.id, { status: "completed", appendLog: "note" });
 
     let writes = 0;
     const counting = await TaskStore.load(store.filePath, async (path, data: StoreData) => {
@@ -60,6 +62,18 @@ describe("clearCompleted", () => {
     expect(next.id).toBe(4);
   });
 
+  it("removes completed tasks while retaining deleted tombstones", async () => {
+    const store = await freshStore();
+    const done = await store.create({ subject: "done", description: "" });
+    const deleted = await store.create({ subject: "deleted", description: "" });
+    await store.update(done.id, { status: "in_progress", appendLog: "note" });
+    await store.update(done.id, { status: "completed", appendLog: "note" });
+    await store.update(deleted.id, { status: "deleted", appendLog: "note" });
+
+    expect(await store.clearCompleted()).toEqual([done.id]);
+    expect(store.list()).toMatchObject([{ id: deleted.id, status: "deleted" }]);
+  });
+
   it("is a no-op without writing when nothing is completed", async () => {
     const store = await freshStore();
     await store.create({ subject: "a", description: "" });
@@ -77,17 +91,19 @@ describe("clearCompleted", () => {
     const store = await freshStore();
     const a = await store.create({ subject: "a", description: "" });
     const keep = await store.create({ subject: "keep", description: "" });
-    await store.update(a.id, { status: "in_progress" });
+    await store.update(a.id, { status: "in_progress", appendLog: "note" });
     vi.setSystemTime(T0 + 20_000);
-    await store.update(a.id, { status: "completed" });
+    await store.update(a.id, { status: "in_progress", appendLog: "note" });
+    await store.update(a.id, { status: "completed", appendLog: "note" });
     expect(store.activeTiming()).toEqual({ totalActiveMs: 20_000 });
 
     await store.clearCompleted();
     expect(store.list().map((task) => task.id)).toEqual([keep.id]);
     expect(store.activeTiming()).toEqual({ totalActiveMs: 20_000 });
 
-    // Emptying an all-completed list resets like the delete-final-task rule.
-    await store.update(keep.id, { status: "completed" });
+    // Emptying an all-completed list resets active timing.
+    await store.update(keep.id, { status: "in_progress", appendLog: "note" });
+    await store.update(keep.id, { status: "completed", appendLog: "note" });
     vi.setSystemTime(T0 + 40_000);
     await store.clearCompleted();
     expect(store.list()).toEqual([]);
@@ -102,7 +118,8 @@ describe("clearCompleted", () => {
     const setup = await freshStore();
     const dep = await setup.create({ subject: "dep", description: "" });
     await setup.create({ subject: "main", description: "", blockedBy: [dep.id] });
-    await setup.update(dep.id, { status: "completed" });
+    await setup.update(dep.id, { status: "in_progress", appendLog: "note" });
+    await setup.update(dep.id, { status: "completed", appendLog: "note" });
     const beforeDisk = await readFile(setup.filePath, "utf8");
 
     const store = await TaskStore.load(setup.filePath, async () => {
@@ -122,9 +139,10 @@ describe("clearAll", () => {
     const store = await freshStore();
     const a = await store.create({ subject: "a", description: "" });
     await store.create({ subject: "b", description: "" });
-    await store.update(a.id, { status: "in_progress" });
+    await store.update(a.id, { status: "in_progress", appendLog: "note" });
     vi.setSystemTime(T0 + 15_000);
-    await store.update(a.id, { status: "completed" });
+    await store.update(a.id, { status: "in_progress", appendLog: "note" });
+    await store.update(a.id, { status: "completed", appendLog: "note" });
     expect(store.activeTiming()).toEqual({ totalActiveMs: 15_000 });
 
     let writes = 0;
@@ -143,9 +161,25 @@ describe("clearAll", () => {
     expect(counting.list()).toEqual([]);
     expect(counting.activeTiming()).toEqual({ totalActiveMs: 0 });
     const data = JSON.parse(await readFile(store.filePath, "utf8"));
-    expect(data).toMatchObject({ version: 1, nextId: 3, tasks: [], totalActiveMs: 0 });
+    expect(data).toMatchObject({ version: 2, nextId: 3, tasks: [], history: [], totalActiveMs: 0 });
     const next = await counting.create({ subject: "fresh", description: "" });
     expect(next.id).toBe(3);
+  });
+
+  it("preserves previously archived cycles", async () => {
+    const store = await freshStore();
+    const completed = await store.create({ subject: "archived", description: "" });
+    await store.update(completed.id, { status: "in_progress", appendLog: "note" });
+    await store.update(completed.id, { status: "completed", appendLog: "note" });
+    expect(await store.archiveTerminalCycle()).toBe(true);
+    await store.create({ subject: "active", description: "" });
+
+    expect(await store.clearAll()).toBe(1);
+    expect(store.list()).toEqual([]);
+    expect(store.listHistory()).toMatchObject([{ tasks: [{ id: 1, subject: "archived" }] }]);
+    expect((await TaskStore.load(store.filePath)).listHistory()).toMatchObject([
+      { tasks: [{ id: 1, subject: "archived" }] },
+    ]);
   });
 
   it("is a no-op without writing when already empty", async () => {

@@ -6,6 +6,7 @@ import {
   TASK_VIEWER_PAGE_SIZE,
   taskRowLabel,
 } from "../src/tasks-ui.js";
+import { DEFAULT_CONFIG, type PiTasksConfig } from "../src/config.js";
 import type { Task } from "../src/types.js";
 
 function task(overrides: Partial<Task> & { id: number; subject: string }): Task {
@@ -15,6 +16,7 @@ function task(overrides: Partial<Task> & { id: number; subject: string }): Task 
     attempt: 0,
     maxAttempts: 9,
     blockedBy: [],
+    reviewOf: [],
     metadata: {},
     log: [],
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -24,6 +26,8 @@ function task(overrides: Partial<Task> & { id: number; subject: string }): Task 
 }
 
 describe("detail content", () => {
+  const assigneeConfig: PiTasksConfig = { ...DEFAULT_CONFIG, enableAssignee: true };
+
   it("includes status, id/attempts, assignee, description, blockedBy, timestamps, metadata, and log", () => {
     const lines = buildTaskDetailLines(
       task({
@@ -38,11 +42,13 @@ describe("detail content", () => {
         metadata: { key: "value" },
         log: [{ timestamp: "2026-01-01T02:00:00.000Z", message: "note" }],
       }),
+      assigneeConfig,
     );
     const joined = lines.join("\n");
     expect(joined).toContain("in_progress");
     expect(joined).toContain("#2 (1/9)");
-    expect(joined).toContain("api");
+    expect(joined).toContain("Assignee: @api");
+    expect(buildTaskDetailLines(task({ id: 4, subject: "None" }), assigneeConfig)).toContain("Assignee: (none)");
     expect(joined).toContain("details here");
     expect(joined).toContain("#1");
     expect(joined).toContain("2026-01-01T00:00:00.000Z");
@@ -53,10 +59,11 @@ describe("detail content", () => {
 
   it("appends blockedBy ids to pending row subjects only", () => {
     expect(taskRowLabel(task({ id: 3, subject: "Hi", blockedBy: [1, 2] }))).toBe(
-      "■ #3 (0/9) Hi → (1, 2)",
+      "◌ #3 (0/9) Hi → (1, 2)",
     );
     expect(taskRowLabel(task({ id: 3, subject: "Hi", status: "in_progress", blockedBy: [1, 2] }))).not.toContain("→");
     expect(taskRowLabel(task({ id: 3, subject: "Hi", status: "completed", blockedBy: [1, 2] }))).not.toContain("→");
+    expect(taskRowLabel(task({ id: 4, subject: "Old", status: "deleted" }))).toContain("Old [deleted]");
   });
 });
 

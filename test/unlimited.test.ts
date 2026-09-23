@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import registerExtension from "../src/index.js";
-import { DEFAULT_CONFIG, type PiTasksConfig } from "../src/config.js";
+import { DEFAULT_CONFIG, loadPiTasksConfig, type PiTasksConfig } from "../src/config.js";
 import { TaskStore } from "../src/store.js";
 import { buildTaskDetailLines, taskRowLabel } from "../src/tasks-ui.js";
 import {
@@ -12,8 +12,7 @@ import {
   formatTaskLine,
   renderWidgetLines,
   statusGlyph,
-  type ThemeLike,
-} from "../src/widget.js";
+  type ThemeLike } from "../src/widget.js";
 import type { Task } from "../src/types.js";
 
 const dirs: string[] = [];
@@ -38,28 +37,28 @@ function task(overrides: Partial<Task> & { id: number; subject: string }): Task 
     attempt: 0,
     maxAttempts: 9,
     blockedBy: [],
+    reviewOf: [],
     metadata: {},
     log: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
-    ...overrides,
-  };
+    ...overrides };
 }
 
 const fakeTheme: ThemeLike = {
   fg: (_color: string, text: string) => `<${_color}>${text}</>`,
   bold: (text: string) => `*${text}*`,
-  strikethrough: (text: string) => `~${text}~`,
-};
+  strikethrough: (text: string) => `~${text}~` };
 
 const customConfig: PiTasksConfig = {
-  defaultMaxAttempts: 9,
+  maxAttempts: 9,
+  enableAssignee: true,
   glyphs: {
-    inProgress: { character: "▶", defaultColor: "red" },
-    pending: { character: "○", defaultColor: "blue" },
-    completed: { character: "✔", defaultColor: "yellow" },
-  },
-};
+    inProgress: { character: "▶", frames: ["⠁", "⠂", "⠄", "⡀", "⠄", "⠂"] },
+    pending: { character: "○", retriedCharacter: "■" },
+    completed: { character: "✔", awaitingReviewCharacter: "○" },
+    paused: { character: "✖" },
+    deleted: { character: "⏸" } } };
 
 async function freshStore(): Promise<TaskStore> {
   const dir = await mkdtemp(join(tmpdir(), "pi-task-unlimited-"));
@@ -79,11 +78,12 @@ describe("unlimited tasks in the store", () => {
     const store = await freshStore();
     const created = await store.create({ subject: "a", description: "" }, 0);
     for (let attempt = 1; attempt <= 3; attempt += 1) {
-      await store.update(created.id, { status: "in_progress" });
+      await store.update(created.id, { status: "in_progress", appendLog: "note" });
       expect(store.get(created.id)).toMatchObject({ attempt, maxAttempts: 0, status: "in_progress" });
-      await store.update(created.id, { status: "completed" });
+      await store.update(created.id, { status: "in_progress", appendLog: "note" });
+    await store.update(created.id, { status: "completed", appendLog: "note" });
     }
-    await store.update(created.id, { status: "in_progress" });
+    await store.update(created.id, { status: "in_progress", appendLog: "note" });
     expect(store.get(created.id)).toMatchObject({ attempt: 4, maxAttempts: 0 });
   });
 
@@ -96,19 +96,29 @@ describe("unlimited tasks in the store", () => {
   it("round-trips unlimited tasks through the persisted envelope", async () => {
     const store = await freshStore();
     const created = await store.create({ subject: "a", description: "" }, 0);
-    await store.update(created.id, { status: "in_progress" });
+    await store.update(created.id, { status: "in_progress", appendLog: "note" });
     expect((await TaskStore.load(store.filePath)).get(created.id)).toMatchObject({ attempt: 1, maxAttempts: 0 });
+  });
+
+  it("derives the paused warning color from the persisted attempt after reload", async () => {
+    const store = await freshStore();
+    const created = await store.create({ subject: "retry", description: "" });
+    await store.update(created.id, { status: "in_progress", appendLog: "note" });
+    await store.update(created.id, { status: "paused", appendLog: "note" });
+    const reloaded = await TaskStore.load(store.filePath);
+    const lines = renderWidgetLines(reloaded.list(), fakeTheme);
+    expect(lines[1]).toMatch(/^  <warning>⏸<\/\>/);
   });
 });
 
 describe("unlimited counter rendering", () => {
-  it("hides the counter in plain widget lines", () => {
-    expect(formatTaskLine(task({ id: 1, subject: "Free" }), Date.now())).toContain("(0/9)");
-    expect(formatTaskLine(task({ id: 1, subject: "Free", maxAttempts: 0 }))).toBe("  ■ #1 Free");
-    expect(formatTaskLine(task({ id: 1, subject: "Free", assignee: "api", maxAttempts: 0 }))).toBe(
-      "  ■ #1 [api] Free",
+  it("renders the remaining-attempts indicator in plain widget lines", () => {
+    expect(formatTaskLine(task({ id: 1, subject: "Free" }), Date.now())).toContain("#1 ↻9");
+    expect(formatTaskLine(task({ id: 1, subject: "Free", maxAttempts: 0 }))).toBe("  ◌ #1 Free");
+    expect(formatTaskLine(task({ id: 1, subject: "Free", assignee: "api", maxAttempts: 0 }), Date.now(), { ...DEFAULT_CONFIG, enableAssignee: true })).toBe(
+      "  ◌ #1 @api Free",
     );
-    expect(buildWidgetLines([task({ id: 1, subject: "Free", maxAttempts: 0 })])[1]).toBe("  ■ #1 Free");
+    expect(buildWidgetLines([task({ id: 1, subject: "Free", maxAttempts: 0 })])[1]).toBe("  ◌ #1 Free");
   });
 
   it("hides the counter in themed widget lines while keeping glyph/subject styles", () => {
@@ -122,32 +132,34 @@ describe("unlimited counter rendering", () => {
   });
 
   it("hides the counter in /tasks rows and detail lines", () => {
-    expect(taskRowLabel(task({ id: 2, subject: "Free", maxAttempts: 0 }))).toBe("■ #2 Free");
+    expect(taskRowLabel(task({ id: 2, subject: "Free", maxAttempts: 0 }))).toBe("◌ #2 Free");
     expect(taskRowLabel(task({ id: 2, subject: "Free", blockedBy: [1], maxAttempts: 0 }))).toBe(
-      "■ #2 Free → (1)",
+      "◌ #2 Free → (1)",
     );
     const detail = buildTaskDetailLines(task({ id: 2, subject: "Free", attempt: 3, maxAttempts: 0 }));
     expect(detail).toContain("Task: #2");
     expect(detail.join("\n")).not.toContain("(3/0)");
     // Limited tasks keep the counter everywhere.
-    expect(taskRowLabel(task({ id: 2, subject: "Capped" }))).toBe("■ #2 (0/9) Capped");
+    expect(taskRowLabel(task({ id: 2, subject: "Capped" }))).toBe("◌ #2 (0/9) Capped");
     expect(buildTaskDetailLines(task({ id: 2, subject: "Capped" }))).toContain("Task: #2 (0/9)");
   });
 });
 
-describe("configurable glyphs and colors", () => {
+describe("configurable glyph characters", () => {
   it("uses the configured glyph character per status", () => {
     expect(statusGlyph(task({ id: 1, subject: "a", status: "pending" }), customConfig)).toBe("○");
-    expect(statusGlyph(task({ id: 1, subject: "a", status: "in_progress" }), customConfig)).toBe("▶");
+    expect(statusGlyph(task({ id: 1, subject: "a", status: "in_progress" }), customConfig)).toBe("⠁");
     expect(statusGlyph(task({ id: 1, subject: "a", status: "completed" }), customConfig)).toBe("✔");
-    expect(statusGlyph(task({ id: 1, subject: "a" }))).toBe("■");
-    expect(formatTaskLine(task({ id: 1, subject: "a" }), Date.now(), customConfig)).toBe("  ○ #1 (0/9) a");
+    expect(statusGlyph(task({ id: 1, subject: "a" }))).toBe("◌");
+    expect(formatTaskLine(task({ id: 1, subject: "a" }), Date.now(), customConfig)).toBe("  ○ #1 ↻9 a");
     expect(taskRowLabel(task({ id: 1, subject: "a" }), customConfig)).toBe("○ #1 (0/9) a");
   });
 
-  it("resolves configured default colors through the theme mapping", () => {
+  it("keeps fixed status colors with configured glyph characters", () => {
     const pending = renderWidgetLines([task({ id: 1, subject: "a" })], fakeTheme, undefined, true, Date.now(), undefined, customConfig);
-    expect(pending[1]).toMatch(/^  <accent>○<\/>/);
+    expect(pending[1]).toMatch(/^  <dim>○<\/>/);
+    const retried = renderWidgetLines([task({ id: 1, subject: "a", attempt: 1 })], fakeTheme, undefined, true, Date.now(), undefined, customConfig);
+    expect(retried[1]).toMatch(/^  <warning>■<\/>/);
     const active = renderWidgetLines(
       [task({ id: 2, subject: "b", status: "in_progress" })],
       fakeTheme,
@@ -157,7 +169,7 @@ describe("configurable glyphs and colors", () => {
       undefined,
       customConfig,
     );
-    expect(active[1]).toMatch(/^  <error>▶<\/>/);
+    expect(active[1]).toMatch(/^  <success>⠁<\/>/);
     const done = renderWidgetLines(
       [task({ id: 3, subject: "c", status: "completed" })],
       fakeTheme,
@@ -167,85 +179,31 @@ describe("configurable glyphs and colors", () => {
       undefined,
       customConfig,
     );
-    expect(done[1]).toMatch(/^  <warning>✔<\/>/);
+    expect(done[1]).toMatch(/^  <success>✔<\/>/);
   });
 
-  it("keeps per-task color as an override for in-progress/completed but not pending", () => {
-    const active = renderWidgetLines(
-      [task({ id: 1, subject: "a", status: "in_progress", color: "blue" })],
-      fakeTheme,
-      undefined,
-      true,
-      Date.now(),
-      undefined,
-      customConfig,
-    );
-    expect(active[1]).toMatch(/^  <accent>▶<\/>/);
-    const pending = renderWidgetLines(
-      [task({ id: 1, subject: "a", color: "red" })],
-      fakeTheme,
-      undefined,
-      true,
-      Date.now(),
-      undefined,
-      customConfig,
-    );
-    expect(pending[1]).toMatch(/^  <accent>○<\/>/);
-    expect(pending[1]).not.toContain("<error>");
-  });
-
-  it("falls back safely for unknown configured color names", () => {
-    const unknown: PiTasksConfig = {
-      defaultMaxAttempts: 9,
-      glyphs: {
-        inProgress: { character: "▶", defaultColor: "mystery" },
-        pending: { character: "○", defaultColor: "mystery" },
-        completed: { character: "✔", defaultColor: "mystery" },
-      },
-    };
-    const active = renderWidgetLines(
-      [task({ id: 1, subject: "a", status: "in_progress" })],
-      fakeTheme,
-      undefined,
-      true,
-      Date.now(),
-      undefined,
-      unknown,
-    );
-    expect(active[1]).toMatch(/^  <success>▶<\/>/);
-    const pending = renderWidgetLines([task({ id: 1, subject: "a" })], fakeTheme, undefined, true, Date.now(), undefined, unknown);
-    expect(pending[1]).toMatch(/^  <dim>○<\/>/);
-  });
-
-  it("blanks the glyph's visible width when blinking custom in-progress glyphs", () => {
-    const wide: PiTasksConfig = {
-      ...DEFAULT_CONFIG,
-      glyphs: {
-        ...DEFAULT_CONFIG.glyphs,
-        inProgress: { character: ">>", defaultColor: "green" },
-      },
-    };
-    const on = renderWidgetLines(
-      [task({ id: 1, subject: "a", status: "in_progress" })],
-      fakeTheme,
-      undefined,
-      true,
-      Date.now(),
-      undefined,
-      wide,
-    );
-    const off = renderWidgetLines(
-      [task({ id: 1, subject: "a", status: "in_progress" })],
-      fakeTheme,
-      undefined,
-      false,
-      Date.now(),
-      undefined,
-      wide,
-    );
-    expect(on[1]).toContain("<success>>></>");
-    expect(off[1]).toContain("<success>  </>");
-    expect(visibleWidth(off[1])).toBe(visibleWidth(on[1]));
+  it("blanks the glyph's visible width for character-only legacy config, including the default character", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-task-legacy-glyph-"));
+    dirs.push(dir);
+    for (const [name, character] of [["wide", ">>"], ["default", "⠁"]] as const) {
+      const path = join(dir, `${name}.json`);
+      await writeFile(path, JSON.stringify({ glyphs: { inProgress: { character } } }));
+      const config = loadPiTasksConfig(path, () => {});
+      const spread: PiTasksConfig = {
+        ...config,
+        glyphs: {
+          ...config.glyphs,
+          inProgress: { ...config.glyphs.inProgress, frames: [...config.glyphs.inProgress.frames] } } };
+      const roundTripped = JSON.parse(JSON.stringify(config)) as PiTasksConfig;
+      const active = [task({ id: 1, subject: "a", status: "in_progress" })];
+      for (const normalized of [config, spread, roundTripped]) {
+        const on = renderWidgetLines(active, fakeTheme, undefined, 0, Date.now(), undefined, normalized);
+        const off = renderWidgetLines(active, fakeTheme, undefined, 1, Date.now(), undefined, normalized);
+        expect(on[1]).toContain(`<success>${character}</>`);
+        expect(off[1]).toContain(`<success>${" ".repeat(visibleWidth(character))}</>`);
+        expect(visibleWidth(off[1])).toBe(visibleWidth(on[1]));
+      }
+    }
   });
 });
 
@@ -261,8 +219,7 @@ describe("unlimited tasks via tools", () => {
       registerCommand: (_name: string, _command: unknown) => {},
       sendMessage: (message: any, options: any) => {
         messages.push({ message, options });
-      },
-    };
+      } };
     registerExtension(pi as any);
     return { tools, messages };
   }
@@ -271,7 +228,7 @@ describe("unlimited tasks via tools", () => {
     const agentDir = await mkdtemp(join(tmpdir(), "pi-task-agent-"));
     dirs.push(agentDir);
     await mkdir(join(agentDir, "extensions"), { recursive: true });
-    await writeFile(join(agentDir, "extensions", "pi-tasks.json"), JSON.stringify({ defaultMaxAttempts: 0 }));
+    await writeFile(join(agentDir, "extensions", "pi-tasks.json"), JSON.stringify({ maxAttempts: 0 }));
     process.env.PI_CODING_AGENT_DIR = agentDir;
     const cwd = await mkdtemp(join(tmpdir(), "pi-task-unlimited-tool-"));
     dirs.push(cwd);
@@ -283,35 +240,33 @@ describe("unlimited tasks via tools", () => {
         setWidget: () => {},
         notify: (message: string, level: unknown) => {
           notifications.push({ message, level });
-        },
-      },
-    };
+        } } };
     return { ctx, notifications };
   }
 
-  it("uses the configured defaultMaxAttempts 0 and keeps JSON payload fields", async () => {
+  it("uses the configured maxAttempts 0 and keeps JSON payload fields", async () => {
     const { ctx } = await unlimitedCtx("unlimited-tool-session");
     const { tools } = capture();
-    const created = await tools.get("TaskCreate").execute("c1", { subject: "W", description: "d" }, undefined, undefined, ctx);
+    const created = await tools.get("task_create").execute("c1", { tasks: [{ subject: "W", description: "d" }] }, undefined, undefined, ctx);
     expect(created.isError).toBeUndefined();
-    expect(JSON.parse(created.content[0].text)).toMatchObject({ id: 1, attempt: 0, maxAttempts: 0 });
-    const gotten = await tools.get("TaskGet").execute("c2", { id: 1 }, undefined, undefined, ctx);
+    expect(JSON.parse(created.content[0].text).tasks[0]).toMatchObject({ id: 1, attempt: 0, maxAttempts: 0 });
+    const gotten = await tools.get("task_get").execute("c2", { id: 1 }, undefined, undefined, ctx);
     expect(JSON.parse(gotten.content[0].text)).toMatchObject({ attempt: 0, maxAttempts: 0 });
-    const listed = await tools.get("TaskList").execute("c3", {}, undefined, undefined, ctx);
+    const listed = await tools.get("task_list").execute("c3", {}, undefined, undefined, ctx);
     expect(JSON.parse(listed.content[0].text)[0]).toMatchObject({ attempt: 0, maxAttempts: 0 });
   });
 
   it("never warns or exhausts unlimited tasks across repeated attempts", async () => {
     const { ctx, notifications } = await unlimitedCtx("unlimited-final-session");
     const { tools, messages } = capture();
-    await tools.get("TaskCreate").execute("c1", { subject: "W", description: "d" }, undefined, undefined, ctx);
+    await tools.get("task_create").execute("c1", { tasks: [{ subject: "W", description: "d" }] }, undefined, undefined, ctx);
     for (let n = 2; n <= 5; n += 1) {
-      const updated = await tools.get("TaskUpdate").execute(`c${n}`, { id: 1, status: "in_progress" }, undefined, undefined, ctx);
+      const updated = await tools.get("task_update").execute(`c${n}`, { updates: [{ id: 1, status: "in_progress", appendLog: "note" }] }, undefined, undefined, ctx);
       expect(updated.isError).toBeUndefined();
-      await tools.get("TaskUpdate").execute(`d${n}`, { id: 1, status: "completed" }, undefined, undefined, ctx);
+      await tools.get("task_update").execute(`d${n}`, { updates: [{ id: 1, status: "completed", appendLog: "note" }] }, undefined, undefined, ctx);
     }
-    await tools.get("TaskUpdate").execute("c6", { id: 1, status: "in_progress" }, undefined, undefined, ctx);
-    const stored = JSON.parse((await tools.get("TaskGet").execute("c7", { id: 1 }, undefined, undefined, ctx)).content[0].text);
+    await tools.get("task_update").execute("c6", { updates: [{ id: 1, status: "in_progress", appendLog: "note" }] }, undefined, undefined, ctx);
+    const stored = JSON.parse((await tools.get("task_get").execute("c7", { id: 1 }, undefined, undefined, ctx)).content[0].text);
     expect(stored).toMatchObject({ attempt: 5, maxAttempts: 0, status: "in_progress" });
     expect(notifications).toEqual([]);
     expect(messages).toEqual([]);

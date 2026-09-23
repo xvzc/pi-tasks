@@ -30,12 +30,12 @@ function widgetTask(overrides: Partial<Task> & { id: number; subject: string }):
     attempt: 0,
     maxAttempts: 9,
     blockedBy: [],
+    reviewOf: [],
     metadata: {},
     log: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
-    ...overrides,
-  };
+    ...overrides };
 }
 
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
@@ -47,12 +47,12 @@ describe("per-attempt timing transitions", () => {
     const created = await store.create({ subject: "a", description: "" });
     expect(created.startedAt).toBeUndefined();
 
-    const started = await store.update(created.id, { status: "in_progress" });
+    const started = await store.update(created.id, { status: "in_progress", appendLog: "note" });
     expect(started.startedAt).toBe(new Date(T0).toISOString());
 
     // Staying in_progress (explicit status or field patch) must not reset the timer.
     vi.setSystemTime(T0 + 30_000);
-    const stayed = await store.update(created.id, { status: "in_progress", subject: "renamed" });
+    const stayed = await store.update(created.id, { status: "in_progress", subject: "renamed", appendLog: "note" });
     expect(stayed.startedAt).toBe(new Date(T0).toISOString());
     const patched = await store.update(created.id, { description: "edit" });
     expect(patched.startedAt).toBe(new Date(T0).toISOString());
@@ -65,10 +65,10 @@ describe("per-attempt timing transitions", () => {
     vi.setSystemTime(T0);
     const store = await freshStore();
     const created = await store.create({ subject: "a", description: "" });
-    await store.update(created.id, { status: "in_progress" });
+    await store.update(created.id, { status: "in_progress", appendLog: "note" });
 
     vi.setSystemTime(T0 + 65_000);
-    const done = await store.update(created.id, { status: "completed" });
+    const done = await store.update(created.id, { status: "completed", appendLog: "note" });
     expect(done.tookMs).toBe(65_000);
     expect(done.startedAt).toBeUndefined();
     expect(formatTaskLine(done, T0 + 65_000)).toContain("1m 5s");
@@ -79,13 +79,13 @@ describe("per-attempt timing transitions", () => {
 
     // Rework starts a new zeroed attempt showing `0s`, and the next completion overwrites the frozen duration.
     vi.setSystemTime(T0 + 600_000);
-    const reworked = await store.update(created.id, { status: "in_progress" });
+    const reworked = await store.update(created.id, { status: "in_progress", appendLog: "note" });
     expect(reworked.tookMs).toBeUndefined();
     expect(formatTaskLine(reworked, T0 + 600_000)).not.toContain("took");
-    expect(formatTaskLine(reworked, T0 + 600_000)).toBe(`  ■ #1 (2/9) a 0s`);
+    expect(formatTaskLine(reworked, T0 + 600_000)).toBe(`  ◌ #1 ↻6 a 0s`);
 
     vi.setSystemTime(T0 + 630_000);
-    const redone = await store.update(created.id, { status: "completed" });
+    const redone = await store.update(created.id, { status: "completed", appendLog: "note" });
     expect(redone.tookMs).toBe(30_000);
     expect(formatTaskLine(redone, T0 + 630_000)).toContain("30s");
     expect(formatTaskLine(redone, T0 + 630_000)).not.toContain("took");
@@ -101,19 +101,21 @@ describe("global union time", () => {
     const c = await store.create({ subject: "c", description: "" });
     expect(store.activeTiming()).toEqual({ totalActiveMs: 0 });
 
-    await store.update(a.id, { status: "in_progress" });
+    await store.update(a.id, { status: "in_progress", appendLog: "note" });
     expect(store.activeTiming().activeSince).toBe(new Date(T0).toISOString());
 
     // Concurrent work overlaps: 60s with two active tasks counts once.
     vi.setSystemTime(T0 + 10_000);
-    await store.update(b.id, { status: "in_progress" });
+    await store.update(b.id, { status: "in_progress", appendLog: "note" });
     vi.setSystemTime(T0 + 70_000);
-    await store.update(a.id, { status: "completed" });
+    await store.update(a.id, { status: "in_progress", appendLog: "note" });
+    await store.update(a.id, { status: "completed", appendLog: "note" });
     // One task still active, so the period continues and nothing is banked yet.
     expect(store.activeTiming().totalActiveMs).toBe(0);
 
     vi.setSystemTime(T0 + 100_000);
-    await store.update(b.id, { status: "completed" });
+    await store.update(b.id, { status: "in_progress", appendLog: "note" });
+    await store.update(b.id, { status: "completed", appendLog: "note" });
     // Union is T0..T0+100s counted once.
     expect(store.activeTiming()).toEqual({ totalActiveMs: 100_000 });
 
@@ -123,9 +125,10 @@ describe("global union time", () => {
     expect(store.activeTiming()).toEqual({ totalActiveMs: 100_000 });
 
     // Restarting work resumes from the accumulated value; rework contributes.
-    await store.update(c.id, { status: "in_progress" });
+    await store.update(c.id, { status: "in_progress", appendLog: "note" });
     vi.setSystemTime(T0 + 530_000);
-    await store.update(c.id, { status: "completed" });
+    await store.update(c.id, { status: "in_progress", appendLog: "note" });
+    await store.update(c.id, { status: "completed", appendLog: "note" });
     expect(store.activeTiming()).toEqual({ totalActiveMs: 130_000 });
   });
 
@@ -133,16 +136,17 @@ describe("global union time", () => {
     vi.setSystemTime(T0);
     const store = await freshStore();
     const created = await store.create({ subject: "a", description: "" });
-    await store.update(created.id, { status: "in_progress" });
+    await store.update(created.id, { status: "in_progress", appendLog: "note" });
     vi.setSystemTime(T0 + 20_000);
-    await store.update(created.id, { status: "completed" });
+    await store.update(created.id, { status: "in_progress", appendLog: "note" });
+    await store.update(created.id, { status: "completed", appendLog: "note" });
     expect(store.activeTiming()).toEqual({ totalActiveMs: 20_000 });
 
     vi.setSystemTime(T0 + 999_000);
     const reloaded = await TaskStore.load(store.filePath);
     expect(reloaded.activeTiming()).toEqual({ totalActiveMs: 20_000 });
     const lines = buildWidgetLines(reloaded.list(), T0 + 999_000, reloaded.activeTiming());
-    expect(lines[0]).toBe("● 1 task (1 done) 20s");
+    expect(lines[0]).toBe("● Tasks · 1 total · 1 done · 20s");
     expect(lines[1]).toContain("20s");
     expect(lines[1]).not.toContain("took");
   });
@@ -153,7 +157,7 @@ describe("persistence and reload", () => {
     vi.setSystemTime(T0);
     const store = await freshStore();
     const created = await store.create({ subject: "a", description: "" });
-    await store.update(created.id, { status: "in_progress" });
+    await store.update(created.id, { status: "in_progress", appendLog: "note" });
     const data = JSON.parse(await readFile(store.filePath, "utf8"));
     expect(data.tasks[0].startedAt).toBe(new Date(T0).toISOString());
     expect(data.activeSince).toBe(new Date(T0).toISOString());
@@ -189,10 +193,8 @@ describe("persistence and reload", () => {
             blockedBy: [],
             metadata: {},
             createdAt: "2026-01-01T00:00:00.000Z",
-            updatedAt: "2026-01-01T00:00:00.000Z",
-          },
-        ],
-      }),
+            updatedAt: "2026-01-01T00:00:00.000Z" },
+        ] }),
     );
     const reloaded = await TaskStore.load(store.filePath);
     const loadIso = new Date(T0 + 100_000).toISOString();
@@ -201,7 +203,7 @@ describe("persistence and reload", () => {
     // matching the global activeSince load-time behavior.
     expect(loaded.startedAt).toBe(loadIso);
     expect(reloaded.activeTiming().activeSince).toBe(loadIso);
-    expect(formatTaskLine(loaded, T0 + 100_000)).toBe("  ■ #1 (1/9) a 0s");
+    expect(formatTaskLine(loaded, T0 + 100_000)).toBe("  ◌ #1 ↻8 a 0s");
     expect(formatTaskLine(loaded, T0 + 190_000)).toContain("1m 30s");
   });
 
@@ -223,10 +225,8 @@ describe("persistence and reload", () => {
           blockedBy: [],
           metadata: {},
           createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-    };
+          updatedAt: "2026-01-01T00:00:00.000Z" },
+      ] };
     await writeFile(store.filePath, JSON.stringify({ ...base, totalActiveMs: -1 }));
     await expect(TaskStore.load(store.filePath)).rejects.toThrow(/totalActiveMs/);
     await writeFile(store.filePath, JSON.stringify({ ...base, activeSince: "not-a-date" }));
@@ -253,22 +253,22 @@ describe("timing formatting", () => {
 
   it("shows the global total only after timing has started", () => {
     const header = buildWidgetLines([widgetTask({ id: 1, subject: "a" })], T0, { totalActiveMs: 0 })[0];
-    expect(header).toBe("● 1 task (0 done)");
+    expect(header).toBe("● Tasks · 1 total · 0 done");
     const started = buildWidgetLines([widgetTask({ id: 1, subject: "a", attempt: 1 })], T0, { totalActiveMs: 0 })[0];
-    expect(started).toBe("● 1 task (0 done) 0s");
+    expect(started).toBe("● Tasks · 1 total · 0 done · 0s");
     const running = buildWidgetLines(
       [widgetTask({ id: 1, subject: "a", status: "in_progress", startedAt: new Date(T0).toISOString() })],
       T0 + 5_000,
       { totalActiveMs: 60_000, activeSince: new Date(T0).toISOString() },
     )[0];
-    expect(running).toBe("● 1 task (0 done) 1m 5s");
+    expect(running).toBe("● Tasks · 1 total · 0 done · 1m 5s");
     expect(formatActiveTotal(undefined, [], T0)).toBe("0s");
   });
 
   it("shows zero durations explicitly and hides pending durations", () => {
-    expect(formatTaskLine(widgetTask({ id: 1, subject: "a" }), T0)).toBe("  ■ #1 (0/9) a");
+    expect(formatTaskLine(widgetTask({ id: 1, subject: "a" }), T0)).toBe("  ◌ #1 ↻9 a");
     expect(
       formatTaskLine(widgetTask({ id: 1, subject: "a", status: "completed", tookMs: 0 }), T0),
-    ).toBe("  ■ #1 (0/9) a 0s");
+    ).toBe("  ● #1 ↻9 a 0s");
   });
 });

@@ -25,8 +25,7 @@ function capture() {
     },
     registerCommand: (name: string, command: any) => {
       commands.set(name, command);
-    },
-  };
+    } };
   registerExtension(pi as any);
   return { tools, commands, pi };
 }
@@ -50,29 +49,28 @@ async function seedCtx(sessionId = "tasks-command") {
     custom: vi.fn(async () => {}),
     setWidget: vi.fn((key: string, content: unknown, options?: unknown) => {
       widgets.push({ key, content, options });
-    }),
-  };
+    }) };
   const ctx: any = {
     cwd,
     mode: "tui",
     sessionManager: { getSessionId: () => sessionId },
-    ui,
-  };
+    ui };
   return { cwd, ctx, ui, notifications, widgets };
 }
 
 async function seedTasks(cwd: string, sessionId: string) {
   const { tools } = capture();
   const ctx: any = { cwd, sessionManager: { getSessionId: () => sessionId }, ui: { setWidget: () => {} } };
-  await tools.get("TaskCreate").execute("c1", { subject: "a", description: "" }, undefined, undefined, ctx);
-  await tools.get("TaskCreate").execute("c2", { subject: "b", description: "" }, undefined, undefined, ctx);
-  await tools.get("TaskUpdate").execute("c3", { id: 1, status: "completed" }, undefined, undefined, ctx);
+  await tools.get("task_create").execute("c1", { tasks: [{ subject: "a", description: "" }] }, undefined, undefined, ctx);
+  await tools.get("task_create").execute("c2", { tasks: [{ subject: "b", description: "" }] }, undefined, undefined, ctx);
+  await tools.get("task_update").execute("c2b", { updates: [{ id: 1, status: "in_progress", appendLog: "start" }] }, undefined, undefined, ctx);
+  await tools.get("task_update").execute("c3", { updates: [{ id: 1, status: "completed", appendLog: "done" }] }, undefined, undefined, ctx);
 }
 
 describe("tasks command registration", () => {
   it("registers /tasks without changing the five tool contracts", () => {
     const { tools, commands } = capture();
-    expect([...tools.keys()].sort()).toEqual(["TaskCreate", "TaskDelete", "TaskGet", "TaskList", "TaskUpdate"]);
+    expect([...tools.keys()].sort()).toEqual(["task_create", "task_get", "task_list", "task_update"]);
     expect([...commands.keys()]).toEqual(["tasks"]);
   });
 
@@ -151,7 +149,7 @@ describe("tasks menu", () => {
     const { ctx, ui } = await seedCtx("no-completed");
     const { tools } = capture();
     const toolCtx: any = { cwd: ctx.cwd, sessionManager: ctx.sessionManager, ui: { setWidget: () => {} } };
-    await tools.get("TaskCreate").execute("c1", { subject: "a", description: "" }, undefined, undefined, toolCtx);
+    await tools.get("task_create").execute("c1", { tasks: [{ subject: "a", description: "" }] }, undefined, undefined, toolCtx);
     ui.selectResult = "Clear completed (0)";
     await commands.get("tasks").handler("", ctx);
     expect(ui.confirm).not.toHaveBeenCalled();
