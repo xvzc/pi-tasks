@@ -9,6 +9,7 @@ import {
 import registerExtension from "../src/index.js";
 import { DEFAULT_CONFIG, type PiTasksConfig } from "../src/config.js";
 import {
+  type CollapsedExpanded,
   renderTaskCall,
   renderTaskCreate,
   renderTaskGet,
@@ -50,14 +51,14 @@ describe("task rendering formatters", () => {
   };
   it("renders create singular/plural summaries and ID/title rows", () => {
     expect(renderTaskCreate([task()])).toEqual({
-      collapsed: "✓ Created 1 task",
-      expanded: "✓ Created 1 task\n  ◌ #1 Implement renderer",
+      collapsed: "✓ Task Create · 1 item",
+      expanded: "✓ Task Create · 1 item\n  ◌ #1 Implement renderer",
     });
     const many = renderTaskCreate([
       task(),
       task({ id: 2, subject: "Verify renderer" }),
     ]);
-    expect(many.collapsed).toBe("✓ Created 2 tasks");
+    expect(many.collapsed).toBe("✓ Task Create · 2 items");
     expect(many.expanded).toContain("\n  ◌ #2 Verify renderer");
     expect(many.expanded).not.toContain("task(s)");
   });
@@ -90,9 +91,9 @@ describe("task rendering formatters", () => {
       "log",
     ]);
     expect(renderTaskUpdate([{ before, after }], assignmentConfig)).toEqual({
-      collapsed: "✓ Updated 1 task",
+      collapsed: "✓ Task Update · 1 item",
       expanded:
-        "✓ Updated 1 task\n  ● #1 Final subject → status, subject, description, assignment, dependencies, metadata, log",
+        "✓ Task Update · 1 item\n  ● #1 Final subject → status, subject, description, assignment, dependencies, metadata, log",
     });
 
     const derivedOnly = task({
@@ -102,7 +103,7 @@ describe("task rendering formatters", () => {
     });
     expect(
       renderTaskUpdate([{ before: task(), after: derivedOnly }]).expanded,
-    ).toBe("✓ Updated 1 task\n  ■ #1 Implement renderer → no changes");
+    ).toBe("✓ Task Update · 1 item\n  ■ #1 Implement renderer → no changes");
   });
 
   it("renders the get operational view with bounded latest logs and placeholders", () => {
@@ -118,10 +119,10 @@ describe("task rendering formatters", () => {
       [task()],
       assignmentConfig,
     );
-    expect(view.collapsed).toBe("✓ Retrieved task #1");
+    expect(view.collapsed).toBe("✓ Task Get · #1");
     expect(view.expanded).toBe(
       [
-        "✓ Retrieved task #1",
+        "✓ Task Get · #1",
         "  ◌ #1 Implement renderer",
         "  Status: pending",
         "  Description: Show useful task details",
@@ -148,13 +149,13 @@ describe("task rendering formatters", () => {
       task({ id: 1, subject: "First" }),
     ];
     expect(renderTaskList(tasks, "completed")).toEqual({
-      collapsed: "✓ Listed 2 tasks · status: completed",
+      collapsed: "✓ Task List · 2 items · status: completed",
       expanded:
-        "✓ Listed 2 tasks · status: completed\n  ● #2 Second → completed\n  ◌ #1 First → pending",
+        "✓ Task List · 2 items · status: completed\n  ● #2 Second → completed\n  ◌ #1 First → pending",
     });
     expect(renderTaskList([], "paused")).toEqual({
-      collapsed: "○ No tasks · status: paused",
-      expanded: "○ No tasks · status: paused",
+      collapsed: "✓ Task List · 0 items · status: paused",
+      expanded: "✓ Task List · 0 items · status: paused",
     });
   });
 
@@ -162,15 +163,15 @@ describe("task rendering formatters", () => {
     expect(
       renderTaskToolError("create", "bad\ninput\u001b[31m", undefined, true)
         .collapsed,
-    ).toBe("✗ Failed to create tasks");
+    ).toBe("✗ Task Create");
     expect(
       renderTaskToolError("update", "bad", undefined, true).collapsed,
-    ).toBe("✗ Failed to update tasks");
+    ).toBe("✗ Task Update");
     expect(renderTaskToolError("get", "bad", 9, true).collapsed).toBe(
-      "✗ Failed to retrieve task #9",
+      "✗ Task Get · #9",
     );
     expect(renderTaskToolError("list", "bad", undefined, true).collapsed).toBe(
-      "✗ Failed to list tasks",
+      "✗ Task List",
     );
     const expected = renderTaskToolError(
       "get",
@@ -178,15 +179,54 @@ describe("task rendering formatters", () => {
       9,
       true,
     );
-    expect(expected.expanded).toBe("✗ Failed to retrieve task #9\n  bad input");
+    expect(expected.expanded).toBe("✗ Task Get · #9\n  bad input");
     const unexpected = renderTaskToolError(
       "list",
       new Error("internal secret"),
     );
     expect(unexpected.expanded).toBe(
-      "✗ Failed to list tasks\n  Unexpected internal error.",
+      "✗ Task List\n  Unexpected internal error.",
     );
     expect(unexpected.expanded).not.toContain("secret");
+  });
+
+  it("uses standardized item-count headings, empty/filtered lists, Get ids, and error headings", () => {
+    expect(renderTaskCreate([task()]).collapsed).toBe("✓ Task Create · 1 item");
+    expect(renderTaskCreate([task(), task({ id: 2 })]).collapsed).toBe(
+      "✓ Task Create · 2 items",
+    );
+    expect(
+      renderTaskUpdate([{ before: task(), after: task() }]).collapsed,
+    ).toBe("✓ Task Update · 1 item");
+    expect(renderTaskList([]).collapsed).toBe("✓ Task List · 0 items");
+    expect(renderTaskList([], "paused").collapsed).toBe(
+      "✓ Task List · 0 items · status: paused",
+    );
+    expect(renderTaskList([task()], undefined).collapsed).toBe(
+      "✓ Task List · 1 item",
+    );
+    expect(renderTaskList([task(), task({ id: 2 })]).collapsed).toBe(
+      "✓ Task List · 2 items",
+    );
+    expect(renderTaskList([task()], "paused").collapsed).toBe(
+      "✓ Task List · 1 item · status: paused",
+    );
+    expect(renderTaskGet(task({ id: 3 })).collapsed).toBe("✓ Task Get · #3");
+    expect(
+      renderTaskToolError("create", "bad", undefined, true).collapsed,
+    ).toBe("✗ Task Create");
+    expect(
+      renderTaskToolError("update", "bad", undefined, true).collapsed,
+    ).toBe("✗ Task Update");
+    expect(renderTaskToolError("list", "bad", undefined, true).collapsed).toBe(
+      "✗ Task List",
+    );
+    expect(renderTaskToolError("get", "bad", 3, true).collapsed).toBe(
+      "✗ Task Get · #3",
+    );
+    expect(renderTaskToolError("get", "bad", undefined, true).collapsed).toBe(
+      "✗ Task Get",
+    );
   });
 
   it("neutralizes controls and keeps every rendered line width bounded", () => {
@@ -273,7 +313,8 @@ describe("task rendering formatters", () => {
     expect(rendered).toBe(rendering.expanded);
     expect(calls).toEqual([
       ["success", "✓"],
-      ["toolTitle", "Created 2 tasks"],
+      ["toolTitle", "Task Create"],
+      ["dim", " · 2 items"],
       ["toolOutput", "  ◌ #1 Implement renderer"],
       ["toolOutput", "  ◌ #2 Verify renderer"],
     ]);
@@ -298,7 +339,8 @@ describe("task rendering formatters", () => {
     ).toBe(failure.expanded);
     expect(calls).toEqual([
       ["error", "✗"],
-      ["error", "Failed to retrieve task #4"],
+      ["error", "Task Get"],
+      ["dim", " · #4"],
       ["toolOutput", "  missing"],
     ]);
 
@@ -321,8 +363,93 @@ describe("task rendering formatters", () => {
         .trimEnd(),
     ).toBe(empty.collapsed);
     expect(calls).toEqual([
-      ["dim", "○"],
-      ["toolTitle", "No tasks"],
+      ["success", "✓"],
+      ["toolTitle", "Task List"],
+      ["dim", " · 0 items"],
+    ]);
+  });
+
+  it("dims result summary suffixes across operations and keeps suffix-less error summaries", () => {
+    const calls: Array<[string, string]> = [];
+    const theme = {
+      fg: (color: string, text: string) => {
+        calls.push([color, text]);
+        return text;
+      },
+    } as any;
+    const collapsedCalls = (rendering: CollapsedExpanded) => {
+      calls.length = 0;
+      renderTaskResult(
+        {
+          content: [{ type: "text", text: "model text" }],
+          details: { rendering },
+        },
+        false,
+        false,
+        undefined,
+        undefined,
+        theme,
+      );
+      return calls;
+    };
+
+    expect(
+      collapsedCalls(
+        renderTaskUpdate([{ before: task(), after: task({ id: 2 }) }]),
+      ),
+    ).toEqual([
+      ["success", "✓"],
+      ["toolTitle", "Task Update"],
+      ["dim", " · 1 item"],
+    ]);
+    expect(collapsedCalls(renderTaskList([task({ id: 4 })], "paused"))).toEqual(
+      [
+        ["success", "✓"],
+        ["toolTitle", "Task List"],
+        ["dim", " · 1 item · status: paused"],
+      ],
+    );
+    expect(collapsedCalls(renderTaskGet(task({ id: 3 })))).toEqual([
+      ["success", "✓"],
+      ["toolTitle", "Task Get"],
+      ["dim", " · #3"],
+    ]);
+
+    const failure = renderTaskToolError("get", "bad", 3, true);
+    calls.length = 0;
+    renderTaskResult(
+      {
+        content: [{ type: "text", text: "model text" }],
+        details: { rendering: failure },
+      },
+      false,
+      true,
+      undefined,
+      undefined,
+      theme,
+    );
+    expect(calls).toEqual([
+      ["error", "✗"],
+      ["error", "Task Get"],
+      ["dim", " · #3"],
+    ]);
+
+    const noIdFailure = renderTaskToolError("get", "bad", undefined, true);
+    calls.length = 0;
+    renderTaskResult(
+      {
+        content: [{ type: "text", text: "model text" }],
+        details: { rendering: noIdFailure },
+      },
+      false,
+      true,
+      undefined,
+      undefined,
+      theme,
+    );
+    expect(calls).toEqual([
+      ["error", "✗"],
+      ["error", "Task Get"],
     ]);
   });
 
@@ -624,7 +751,7 @@ describe("task rendering formatters", () => {
 });
 
 describe("registered tool renderers", () => {
-  it("registers exact count-free renderCall labels for complete and partial args", () => {
+  it("registers standardized operation renderCall labels for complete and partial args", () => {
     const tools = new Map<string, any>();
     registerExtension({
       on() {},
@@ -635,19 +762,58 @@ describe("registered tool renderers", () => {
     } as any);
     const text = (name: string, args: unknown) =>
       tools.get(name).renderCall(args, {}, {}).render(200).join("\n").trimEnd();
-    expect(text("task_create", { tasks: [{}, {}] })).toBe("Creating tasks…");
-    expect(text("task_update", { updates: [{}, {}] })).toBe("Updating tasks…");
-    expect(text("task_get", { id: 3 })).toBe("Retrieving task…");
-    expect(text("task_list", { status: "paused" })).toBe("Listing tasks…");
+    expect(text("task_create", { tasks: [{}, {}] })).toBe("Task Create");
+    expect(text("task_update", { updates: [{}, {}] })).toBe("Task Update");
+    expect(text("task_get", { id: 3 })).toBe("Task Get #3");
+    expect(text("task_list", { status: "paused" })).toBe("Task List");
 
-    expect(text("task_create", undefined)).toBe("Creating tasks…");
-    expect(text("task_update", {})).toBe("Updating tasks…");
-    expect(text("task_get", undefined)).toBe("Retrieving task…");
-    expect(text("task_list", undefined)).toBe("Listing tasks…");
+    expect(text("task_create", undefined)).toBe("Task Create");
+    expect(text("task_update", {})).toBe("Task Update");
+    expect(text("task_get", undefined)).toBe("Task Get");
+    expect(text("task_get", {})).toBe("Task Get");
+    expect(text("task_list", undefined)).toBe("Task List");
     for (const tool of tools.values()) expect(tool.renderShell).toBeUndefined();
   });
 
-  it("uses the host render context to animate all four labels without argument detail", () => {
+  it("sanitizes malformed partial Get IDs in pending labels", () => {
+    vi.useFakeTimers();
+    const tools = new Map<string, any>();
+    registerExtension({
+      on() {},
+      registerCommand() {},
+      registerTool(tool: any) {
+        tools.set(tool.name, tool);
+      },
+    } as any);
+    const get = tools.get("task_get");
+    const context: any = {
+      toolCallId: "malformed-get-id",
+      executionStarted: false,
+      isPartial: true,
+      invalidate: vi.fn(),
+      state: {},
+    };
+    const component = get.renderCall(
+      { id: "\u001b[31m3\n\t4\u0007\u001b[0m" },
+      {},
+      context,
+    );
+    expect(component.render(200).join("\n").trimEnd()).toBe("⠐ Task Get #3 4");
+    vi.advanceTimersByTime(80);
+    expect(component.render(200).join("\n").trimEnd()).toBe("⠰ Task Get #3 4");
+    expect(
+      get
+        .renderCall({ id: "\u001b[31m\n\u001b[0m" }, {}, {})
+        .render(200)
+        .join("\n")
+        .trimEnd(),
+    ).toBe("Task Get");
+    context.isPartial = false;
+    expect(get.renderCall({}, {}, context).render(200)).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("uses the host render context to animate all four operation labels", () => {
     vi.useFakeTimers();
     const tools = new Map<string, any>();
     registerExtension({
@@ -658,10 +824,10 @@ describe("registered tool renderers", () => {
       },
     } as any);
     const cases = [
-      ["task_create", { tasks: [{}, {}] }, "Creating tasks…"],
-      ["task_update", { updates: [{}, {}] }, "Updating tasks…"],
-      ["task_get", { id: 99 }, "Retrieving task…"],
-      ["task_list", { status: "paused" }, "Listing tasks…"],
+      ["task_create", { tasks: [{}, {}] }, "Task Create"],
+      ["task_update", { updates: [{}, {}] }, "Task Update"],
+      ["task_get", { id: 99 }, "Task Get #99"],
+      ["task_list", { status: "paused" }, "Task List"],
     ] as const;
 
     for (const [name, args, label] of cases) {
@@ -699,16 +865,16 @@ describe("registered tool renderers", () => {
       },
     } as any);
     const cases = [
-      ["task_create", "Creating tasks…", renderTaskCreate([task()])],
+      ["task_create", "Task Create", renderTaskCreate([task()])],
       [
         "task_update",
-        "Updating tasks…",
+        "Task Update",
         renderTaskUpdate([
           { before: task(), after: task({ status: "completed" }) },
         ]),
       ],
-      ["task_get", "Retrieving task…", renderTaskGet(task())],
-      ["task_list", "Listing tasks…", renderTaskList([task()])],
+      ["task_get", "Task Get", renderTaskGet(task())],
+      ["task_list", "Task List", renderTaskList([task()])],
     ] as const;
     for (const [name, loadingLabel, rendering] of cases) {
       const host = new ToolExecutionComponent(
@@ -731,9 +897,10 @@ describe("registered tool renderers", () => {
         },
         false,
       );
-      const settled = host.render(200).join("\n");
+      const settled = sanitizeText(host.render(200).join("\n"));
       expect(settled).toContain(rendering.collapsed.slice(2));
-      expect(settled).not.toContain(loadingLabel);
+      expect(settled).not.toContain(`⠐ ${loadingLabel}`);
+      expect(settled).not.toMatch(/[⠐⠰⠴⠶⠦⠖⠒]/);
     }
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -756,16 +923,16 @@ describe("registered tool renderers", () => {
       width: 200,
     });
     const cases = [
-      ["task_create", "Creating tasks…", renderTaskCreate([task()])],
+      ["task_create", "Task Create", renderTaskCreate([task()])],
       [
         "task_update",
-        "Updating tasks…",
+        "Task Update",
         renderTaskUpdate([
           { before: task(), after: task({ status: "completed" }) },
         ]),
       ],
-      ["task_get", "Retrieving task…", renderTaskGet(task())],
-      ["task_list", "Listing tasks…", renderTaskList([task()])],
+      ["task_get", "Task Get", renderTaskGet(task())],
+      ["task_list", "Task List", renderTaskList([task()])],
     ] as const;
 
     for (const [name, loadingLabel, rendering] of cases) {
@@ -780,8 +947,10 @@ describe("registered tool renderers", () => {
       );
       const html = JSON.stringify({ call, result });
       expect(call).toBe("");
-      expect(result?.expanded).toContain(rendering.collapsed.slice(2));
-      expect(html).not.toContain(loadingLabel);
+      expect(String(result?.expanded).replace(/<[^>]*>/g, "")).toContain(
+        rendering.collapsed.slice(2),
+      );
+      expect(call).not.toContain(loadingLabel);
       expect(html).not.toMatch(/[⠐⠰⠴⠶⠦⠖⠒]/);
       expect(vi.getTimerCount()).toBe(0);
     }
@@ -847,9 +1016,7 @@ describe("registered tool renderers", () => {
       .render(200)
       .map((line: string) => line.trimEnd())
       .join("\n");
-    expect(masked).toBe(
-      "✗ Failed to retrieve task #7\n  Unexpected internal error.",
-    );
+    expect(masked).toBe("✗ Task Get · #7\n  Unexpected internal error.");
 
     const partialContext = tools
       .get("task_update")
@@ -881,7 +1048,7 @@ describe("registered tool renderers", () => {
       .render(200)
       .join("\n")
       .trimEnd();
-    expect(missingArgs).toBe("✗ Failed to retrieve task #");
+    expect(missingArgs).toBe("✗ Task Get");
   });
 });
 
@@ -962,10 +1129,10 @@ describe("pending spinner theming", () => {
         },
       } as any);
       const cases = [
-        ["task_create", { tasks: [{}, {}] }, "Creating tasks…"],
-        ["task_update", { updates: [{}, {}] }, "Updating tasks…"],
-        ["task_get", { id: 9 }, "Retrieving task…"],
-        ["task_list", { status: "paused" }, "Listing tasks…"],
+        ["task_create", { tasks: [{}, {}] }, "Task Create"],
+        ["task_update", { updates: [{}, {}] }, "Task Update"],
+        ["task_get", { id: 9 }, "Task Get #9"],
+        ["task_list", { status: "paused" }, "Task List"],
       ] as const;
       for (const [name, args, label] of cases) {
         const { calls, theme } = recordingTheme();
@@ -985,7 +1152,11 @@ describe("pending spinner theming", () => {
         expect(component.render(200).join("\n")).toContain(
           `<accent>⠐</> <toolTitle>${label}</>`,
         );
-        expect(component.render(200).join("\n")).not.toContain("99");
+        if (name === "task_get") {
+          expect(component.render(200).join("\n")).toContain("#9");
+        } else {
+          expect(component.render(200).join("\n")).not.toContain("#9");
+        }
         context.lastComponent = component;
         context.isPartial = false;
         expect(
