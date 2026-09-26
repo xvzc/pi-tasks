@@ -31,6 +31,7 @@ import {
   renderTaskToolError,
   renderTaskUpdate,
   taskRenderDetails,
+  truncateToWidth,
   type TaskToolRenderDetails,
 } from "./tool-rendering.js";
 import { isTaskStatus, type Task } from "./types.js";
@@ -656,7 +657,7 @@ ${TASK_MANAGEMENT_TAG_END}`;
       }
     },
     renderCall(_args, theme, context) {
-      return renderTaskCall("Creating tasks…", context, theme);
+      return renderTaskCall("Task Create", context, theme);
     },
     renderResult(result, options, theme, context) {
       return renderTaskResult(
@@ -763,7 +764,7 @@ Lifecycle and dependency rules are evaluated from original state to the complete
       }
     },
     renderCall(_args, theme, context) {
-      return renderTaskCall("Updating tasks…", context, theme);
+      return renderTaskCall("Task Update", context, theme);
     },
     renderResult(result, options, theme, context) {
       return renderTaskResult(
@@ -811,8 +812,16 @@ Details include dependencies, metadata, and the execution log.`,
         taskRenderDetails(() => renderTaskGet(task, store.list(), config)),
       );
     },
-    renderCall(_args, theme, context) {
-      return renderTaskCall("Retrieving task…", context, theme);
+    renderCall(args, theme, context) {
+      const rawId =
+        (args as { id?: unknown } | undefined)?.id ??
+        (context as { args?: { id?: unknown } } | undefined)?.args?.id;
+      const safeId = rawId == null ? "" : truncateToWidth(rawId, 30);
+      return renderTaskCall(
+        `Task Get${safeId ? ` #${safeId}` : ""}`,
+        context,
+        theme,
+      );
     },
     renderResult(result, options, theme, context) {
       return renderTaskResult(
@@ -868,7 +877,7 @@ Use it for an overview of task state across the session.`,
       );
     },
     renderCall(_args, theme, context) {
-      return renderTaskCall("Listing tasks…", context, theme);
+      return renderTaskCall("Task List", context, theme);
     },
     renderResult(result, options, theme, context) {
       return renderTaskResult(

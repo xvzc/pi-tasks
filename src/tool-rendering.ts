@@ -159,6 +159,10 @@ export function pluralizeTask(count: number): string {
   return `${count} ${count === 1 ? "task" : "tasks"}`;
 }
 
+export function pluralizeItems(count: number): string {
+  return `${count} ${count === 1 ? "item" : "items"}`;
+}
+
 function expanded(summary: string, lines: string[]): CollapsedExpanded {
   return {
     collapsed: summary,
@@ -172,7 +176,7 @@ function expanded(summary: string, lines: string[]): CollapsedExpanded {
 export function renderTaskCreate(
   tasks: Pick<Task, "id" | "subject">[],
 ): CollapsedExpanded {
-  const summary = `✓ Created ${pluralizeTask(tasks.length)}`;
+  const summary = `✓ Task Create · ${pluralizeItems(tasks.length)}`;
   return expanded(
     summary,
     tasks.map(
@@ -236,7 +240,7 @@ export function renderTaskUpdate(
   config: PiTasksConfig = DEFAULT_CONFIG,
   tasks: readonly Task[] = updates.map(({ after }) => after),
 ): CollapsedExpanded {
-  const summary = `✓ Updated ${pluralizeTask(updates.length)}`;
+  const summary = `✓ Task Update · ${pluralizeItems(updates.length)}`;
   const lines = updates.map(({ before, after }) => {
     const changes = semanticDiff(before, after).filter(
       (field) => config.enableAssignment || field !== "assignment",
@@ -255,7 +259,7 @@ export function renderTaskGet(
   tasks: readonly Task[] = [task],
   config: PiTasksConfig = DEFAULT_CONFIG,
 ): CollapsedExpanded {
-  const summary = `✓ Retrieved task #${task.id}`;
+  const summary = `✓ Task Get · #${task.id}`;
   const dependencies =
     task.blockedBy.length === 0
       ? "—"
@@ -292,12 +296,12 @@ export function renderTaskList(
 ): CollapsedExpanded {
   const filter =
     status === undefined ? "" : ` · status: ${truncateToWidth(status, 40)}`;
+  const summary = `✓ Task List · ${pluralizeItems(tasks.length)}${filter}`;
   if (tasks.length === 0)
     return {
-      collapsed: `○ No tasks${filter}`,
-      expanded: `○ No tasks${filter}`,
+      collapsed: summary,
+      expanded: summary,
     };
-  const summary = `✓ Listed ${pluralizeTask(tasks.length)}${filter}`;
   return expanded(
     summary,
     tasks.map(
@@ -316,12 +320,14 @@ export function renderTaskToolError(
   const safeId = id === undefined ? "" : truncateToWidth(id, 30);
   const summary =
     operation === "create"
-      ? "✗ Failed to create tasks"
+      ? "✗ Task Create"
       : operation === "update"
-        ? "✗ Failed to update tasks"
+        ? "✗ Task Update"
         : operation === "get"
-          ? `✗ Failed to retrieve task #${safeId}`
-          : "✗ Failed to list tasks";
+          ? safeId
+            ? `✗ Task Get · #${safeId}`
+            : "✗ Task Get"
+          : "✗ Task List";
   const detail = expected
     ? truncateToWidth(error instanceof Error ? error.message : error)
     : "Unexpected internal error.";
@@ -464,6 +470,8 @@ export function renderTaskCall(
   return spinner;
 }
 
+const SUMMARY_SUFFIX_RE = /^(.*?)( · \d+ items?(?: · .*)?| · #.*)$/;
+
 function themedRendering(
   rendering: CollapsedExpanded,
   expandedResult: boolean,
@@ -483,8 +491,10 @@ function themedRendering(
           : undefined;
   if (!color) return plain;
 
-  const themedSummary =
-    glyph === "✗"
+  const suffixMatch = SUMMARY_SUFFIX_RE.exec(summaryText);
+  const themedSummary = suffixMatch
+    ? `${theme.fg(color, glyph)} ${theme.fg(color === "success" ? "toolTitle" : color, suffixMatch[1])}${theme.fg("dim", suffixMatch[2])}`
+    : glyph === "✗"
       ? `${theme.fg("error", glyph)} ${theme.fg("error", summaryText)}`
       : `${theme.fg(color, glyph)} ${theme.fg("toolTitle", summaryText)}`;
   return details.length === 0

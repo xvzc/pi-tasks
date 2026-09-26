@@ -432,21 +432,21 @@ describe("tool behavior", () => {
     });
     expect(created.content[0].text).not.toContain("Created task");
     expect(created.details.rendering).toEqual({
-      collapsed: "✓ Created 1 task",
-      expanded: "✓ Created 1 task\n  ◌ #1 Work",
+      collapsed: "✓ Task Create · 1 item",
+      expanded: "✓ Task Create · 1 item\n  ◌ #1 Work",
     });
 
     const listed = await tools
       .get("task_list")
       .execute("c2", {}, undefined, onUpdate, ctx);
     expect(JSON.parse(listed.content[0].text)).toHaveLength(1);
-    expect(listed.details.rendering.collapsed).toBe("✓ Listed 1 task");
+    expect(listed.details.rendering.collapsed).toBe("✓ Task List · 1 item");
 
     const gotten = await tools
       .get("task_get")
       .execute("c3", { id: 1 }, undefined, onUpdate, ctx);
     expect(JSON.parse(gotten.content[0].text).subject).toBe("Work");
-    expect(gotten.details.rendering.collapsed).toBe("✓ Retrieved task #1");
+    expect(gotten.details.rendering.collapsed).toBe("✓ Task Get · #1");
 
     await tools
       .get("task_update")
@@ -473,8 +473,8 @@ describe("tool behavior", () => {
     });
     expect(updated.content[0].text).not.toContain("Updated task");
     expect(updated.details.rendering).toEqual({
-      collapsed: "✓ Updated 1 task",
-      expanded: "✓ Updated 1 task\n  ● #1 Work → status, log",
+      collapsed: "✓ Task Update · 1 item",
+      expanded: "✓ Task Update · 1 item\n  ● #1 Work → status, log",
     });
     expect(JSON.stringify(updated.details)).not.toContain("createdAt");
     expect(widgets).toHaveLength(1);
@@ -519,8 +519,8 @@ describe("tool behavior", () => {
       status: "deleted",
     });
     expect(deleted.details.rendering).toEqual({
-      collapsed: "✓ Updated 1 task",
-      expanded: "✓ Updated 1 task\n  ⌫ #1 Work → status, log",
+      collapsed: "✓ Task Update · 1 item",
+      expanded: "✓ Task Update · 1 item\n  ⌫ #1 Work → status, log",
     });
     const deletedList = await tools
       .get("task_list")
