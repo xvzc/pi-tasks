@@ -35,7 +35,7 @@ IDs, counts, and truncation).
   - `✗ Failed to retrieve task #N` (N from args)
   - `✗ Failed to list tasks`
   - `✗ Failed to delete task #N` (N from args)
-  The expanded detail contains sanitized expected-error detail for known failures (e.g. not-found, validation) and a masked generic message for unexpected/internal failures. Generic forms such as `task_update failed` MUST NOT be used.
+    The expanded detail contains sanitized expected-error detail for known failures (e.g. not-found, validation) and a masked generic message for unexpected/internal failures. Generic forms such as `task_update failed` MUST NOT be used.
 - S8: All rendered text is sanitized: control characters neutralized, lines truncated to a safe terminal width. Sanitization applies to titles, descriptions, logs, and expected-error detail.
 - S9: No progress callbacks or streaming output are emitted by any of the five tools. Pending `renderCall` behavior is defined by S10; settled `renderCall` is the zero-height `Container` per S12.
 
@@ -47,7 +47,7 @@ IDs, counts, and truncation).
   - get: `Retrieving task…`
   - list: `Listing tasks…`
   - delete: `Deleting task…`
-  This refinement is the authoritative pending `renderCall` contract except as qualified above; S1–S9 settled strings, model JSON/error/schema invariants, collapsed/expanded behavior, sanitization, and width limits are otherwise unchanged.
+    This refinement is the authoritative pending `renderCall` contract except as qualified above; S1–S9 settled strings, model JSON/error/schema invariants, collapsed/expanded behavior, sanitization, and width limits are otherwise unchanged.
 - S11: On settled success, theming MUST be: `✓` glyph in theme `success` (green); success summary text (`Created N task(s)` substituted, `Updated N task(s)` substituted, `Retrieved task #N`, `Listed N task(s)[ · status: X]` substituted, `Deleted task #N`) in theme `toolTitle`; every expanded detail line in theme `toolOutput`, matching normal host tool output. Error/empty semantics MUST stay readable and consistent: theme `error` for the failure glyph/summary, theme `dim` for the empty `○` indicator, and detail text in `toolOutput` unless safety requires otherwise. Non-themed/fallback modes MUST preserve the existing plain semantic strings verbatim.
 - S12: Spinner lifecycle MUST be precisely: create a spinner only during `isPartial === true && executionStarted !== true` when a stable `toolCallId` is available; otherwise use the static safe fallback. Reuse one spinner component/timer through context and the `toolCallId` registry and call `context.invalidate` to advance frames. During `isPartial === true && executionStarted === true`, continue/recover an existing registered, `lastComponent`, or shared-state spinner, but if none exists return an empty `Container` without creating a timer or registry entry. This makes Pi 0.85.1 HTML export/replay—whose first call render is already execution-started—emit no loading HTML. On `isPartial === false`, stop every recoverable spinner, clear registry/state, and return the same zero-height `Container`, never the loading label. `renderResult` retains defensive cleanup. No progress callbacks/`onUpdate`; no lingering timer after settlement or export. Host default shell/background remains unchanged (`renderShell` is not self).
 

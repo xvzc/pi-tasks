@@ -8,7 +8,9 @@ import { TaskStore } from "../src/store.js";
 const dirs: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(
+    dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+  );
   vi.restoreAllMocks();
 });
 
@@ -25,7 +27,8 @@ function capture() {
     },
     registerCommand: (name: string, command: any) => {
       commands.set(name, command);
-    } };
+    },
+  };
   registerExtension(pi as any);
   return { tools, commands, pi };
 }
@@ -34,7 +37,8 @@ async function seedCtx(sessionId = "tasks-command") {
   const cwd = await mkdtemp(join(tmpdir(), "pi-tasks-cmd-"));
   dirs.push(cwd);
   const notifications: Array<{ message: string; type: unknown }> = [];
-  const widgets: Array<{ key: string; content: unknown; options: unknown }> = [];
+  const widgets: Array<{ key: string; content: unknown; options: unknown }> =
+    [];
   const ui: any = {
     selects: [] as Array<{ title: string; options: string[] }>,
     selectResult: undefined as string | undefined,
@@ -49,33 +53,80 @@ async function seedCtx(sessionId = "tasks-command") {
     custom: vi.fn(async () => {}),
     setWidget: vi.fn((key: string, content: unknown, options?: unknown) => {
       widgets.push({ key, content, options });
-    }) };
+    }),
+  };
   const ctx: any = {
     cwd,
     mode: "tui",
     sessionManager: { getSessionId: () => sessionId },
-    ui };
+    ui,
+  };
   return { cwd, ctx, ui, notifications, widgets };
 }
 
 async function seedTasks(cwd: string, sessionId: string) {
   const { tools } = capture();
-  const ctx: any = { cwd, sessionManager: { getSessionId: () => sessionId }, ui: { setWidget: () => {} } };
-  await tools.get("task_create").execute("c1", { tasks: [{ subject: "a", description: "" }] }, undefined, undefined, ctx);
-  await tools.get("task_create").execute("c2", { tasks: [{ subject: "b", description: "" }] }, undefined, undefined, ctx);
-  await tools.get("task_update").execute("c2b", { updates: [{ id: 1, status: "in_progress", appendLog: "start" }] }, undefined, undefined, ctx);
-  await tools.get("task_update").execute("c3", { updates: [{ id: 1, status: "completed", appendLog: "done" }] }, undefined, undefined, ctx);
+  const ctx: any = {
+    cwd,
+    sessionManager: { getSessionId: () => sessionId },
+    ui: { setWidget: () => {} },
+  };
+  await tools
+    .get("task_create")
+    .execute(
+      "c1",
+      { tasks: [{ subject: "a", description: "" }] },
+      undefined,
+      undefined,
+      ctx,
+    );
+  await tools
+    .get("task_create")
+    .execute(
+      "c2",
+      { tasks: [{ subject: "b", description: "" }] },
+      undefined,
+      undefined,
+      ctx,
+    );
+  await tools
+    .get("task_update")
+    .execute(
+      "c2b",
+      { updates: [{ id: 1, status: "in_progress", appendLog: "start" }] },
+      undefined,
+      undefined,
+      ctx,
+    );
+  await tools
+    .get("task_update")
+    .execute(
+      "c3",
+      { updates: [{ id: 1, status: "completed", appendLog: "done" }] },
+      undefined,
+      undefined,
+      ctx,
+    );
 }
 
 describe("tasks command registration", () => {
   it("registers /tasks without changing the five tool contracts", () => {
     const { tools, commands } = capture();
-    expect([...tools.keys()].sort()).toEqual(["task_create", "task_get", "task_list", "task_update"]);
+    expect([...tools.keys()].sort()).toEqual([
+      "task_create",
+      "task_get",
+      "task_list",
+      "task_update",
+    ]);
     expect([...commands.keys()]).toEqual(["tasks"]);
   });
 
   it("builds menu labels with live counts", () => {
-    expect(tasksMenuLabels([])).toEqual(["View all tasks (0)", "Clear completed (0)", "Clear all (0)"]);
+    expect(tasksMenuLabels([])).toEqual([
+      "View all tasks (0)",
+      "Clear completed (0)",
+      "Clear all (0)",
+    ]);
   });
 });
 
@@ -88,7 +139,11 @@ describe("tasks menu", () => {
     await commands.get("tasks").handler("", ctx);
     expect(ui.selects).toHaveLength(1);
     expect(ui.selects[0].title).toBe("Tasks");
-    expect(ui.selects[0].options).toEqual(["View all tasks (2)", "Clear completed (1)", "Clear all (2)"]);
+    expect(ui.selects[0].options).toEqual([
+      "View all tasks (2)",
+      "Clear completed (1)",
+      "Clear all (2)",
+    ]);
     expect(ui.custom).not.toHaveBeenCalled();
     expect(ui.confirm).not.toHaveBeenCalled();
   });
@@ -104,7 +159,12 @@ describe("tasks menu", () => {
     expect(options.overlay).toBe(true);
     expect(options.overlayOptions).toBeDefined();
     // The factory builds a renderable viewer over the live tasks.
-    const component = (factory as any)({}, { fg: (_c: string, text: string) => text }, {}, () => {});
+    const component = (factory as any)(
+      {},
+      { fg: (_c: string, text: string) => text },
+      {},
+      () => {},
+    );
     expect(component.render(80).join("\n")).toContain("Tasks (2)");
 
     // Unsupported modes notify instead of opening custom UI.
@@ -114,7 +174,9 @@ describe("tasks menu", () => {
     await commands.get("tasks").handler("", ctx);
     expect(ui.custom).not.toHaveBeenCalled();
     expect(ui.notify).toHaveBeenCalledTimes(1);
-    expect(String(ui.notify.mock.calls[0][0]).toLowerCase()).toContain("terminal");
+    expect(String(ui.notify.mock.calls[0][0]).toLowerCase()).toContain(
+      "terminal",
+    );
   });
 
   it("confirms Clear completed, refreshes the widget, and notifies", async () => {
@@ -148,8 +210,20 @@ describe("tasks menu", () => {
     const { commands } = capture();
     const { ctx, ui } = await seedCtx("no-completed");
     const { tools } = capture();
-    const toolCtx: any = { cwd: ctx.cwd, sessionManager: ctx.sessionManager, ui: { setWidget: () => {} } };
-    await tools.get("task_create").execute("c1", { tasks: [{ subject: "a", description: "" }] }, undefined, undefined, toolCtx);
+    const toolCtx: any = {
+      cwd: ctx.cwd,
+      sessionManager: ctx.sessionManager,
+      ui: { setWidget: () => {} },
+    };
+    await tools
+      .get("task_create")
+      .execute(
+        "c1",
+        { tasks: [{ subject: "a", description: "" }] },
+        undefined,
+        undefined,
+        toolCtx,
+      );
     ui.selectResult = "Clear completed (0)";
     await commands.get("tasks").handler("", ctx);
     expect(ui.confirm).not.toHaveBeenCalled();
@@ -169,7 +243,9 @@ describe("tasks menu", () => {
     expect(last.key).toBe("tasks");
     expect(last.content).toBeUndefined();
     const { TaskStore: Store, taskFilePath } = await import("../src/store.js");
-    expect((await Store.load(taskFilePath(cwd, "tasks-command"))).list()).toEqual([]);
+    expect(
+      (await Store.load(taskFilePath(cwd, "tasks-command"))).list(),
+    ).toEqual([]);
   });
 
   it("no-ops with a notification when there are no tasks at all", async () => {
@@ -187,14 +263,20 @@ describe("tasks menu", () => {
     await seedTasks(cwd, "tasks-command");
     ui.selectResult = "Clear completed (1)";
     const failure = new Error("simulated write failure");
-    const spy = vi.spyOn(TaskStore.prototype, "clearCompleted").mockRejectedValueOnce(failure);
+    const spy = vi
+      .spyOn(TaskStore.prototype, "clearCompleted")
+      .mockRejectedValueOnce(failure);
     const widgetsBefore = ui.setWidget.mock.calls.length;
     await commands.get("tasks").handler("", ctx);
     expect(spy).toHaveBeenCalled();
     expect(ui.setWidget.mock.calls.length).toBe(widgetsBefore);
     expect(ui.notify).toHaveBeenCalledTimes(1);
-    expect(String(ui.notify.mock.calls[0][0])).toContain("Failed to clear completed tasks");
+    expect(String(ui.notify.mock.calls[0][0])).toContain(
+      "Failed to clear completed tasks",
+    );
     const { taskFilePath } = await import("../src/store.js");
-    expect((await TaskStore.load(taskFilePath(cwd, "tasks-command"))).list()).toHaveLength(2);
+    expect(
+      (await TaskStore.load(taskFilePath(cwd, "tasks-command"))).list(),
+    ).toHaveLength(2);
   });
 });

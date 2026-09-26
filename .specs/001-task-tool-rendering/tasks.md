@@ -9,6 +9,7 @@
 - [x] No schema/handler return-value changes.
 
 Satisfies:
+
 - S1, S7, S8
 - A6, A7
 - D1, D2, D4
@@ -21,6 +22,7 @@ Satisfies:
 - [x] Implement `renderTaskDelete` (`✓ Deleted task #N`; pre-delete subject only on success).
 
 Satisfies:
+
 - S1, S2, S4, S5, S6
 - A1, A3, A4, A5
 - D1, D2
@@ -31,6 +33,7 @@ Satisfies:
 - [x] Enforce exact fixed order `status, subject, description, assignee, dependencies, metadata, log`; normalize `blockedBy→dependencies`, `appendLog→log`; emit `→ no changes` on empty diff.
 
 Satisfies:
+
 - S3
 - A2
 - D3
@@ -42,11 +45,13 @@ Satisfies:
 - [x] Verify tool names, schemas, handler return values, and model JSON/error text are untouched.
 
 Satisfies:
+
 - S1, S9
 - A6, A8
 - D2, D5
 
 Depends on:
+
 - T1
 - T2
 - T3
@@ -56,9 +61,11 @@ Depends on:
 - [x] Add focused tests asserting verbatim collapsed strings (with singular/plural substitution; no literal `task(s)`), verbatim `renderCall` strings, `#id title → status` list rows, get semantics (3-log chronological order, `—` placeholders, attempts formats, bounded previews), diff order/aliases/`no changes`/derived-field exclusion, delete title-on-success-only, the five exact `✗ Failed to ...` lines with N from args (no generic `task_* failed` forms), width/control-char safety, and model-output passthrough unchanged.
 
 Satisfies:
+
 - A1, A2, A3, A4, A5, A6, A7, A8
 
 Depends on:
+
 - T4
 
 ## T6. Verification evidence
@@ -66,9 +73,11 @@ Depends on:
 - [x] Run focused tests, full `npm test`, and `npm run typecheck`, and record results in `verification.md` mapped to A1–A8. (No lint script exists; do not claim lint.) Full suite has one pre-existing unrelated workflow-policy assertion failure; see verification evidence.
 
 Satisfies:
+
 - A1, A2, A3, A4, A5, A6, A7, A8
 
 Depends on:
+
 - T5
 
 ## T7. Themed spinner `renderCall` + settled output themes (refinement)
@@ -79,12 +88,14 @@ Depends on:
 - [x] Add acceptance and verification coverage for: theme calls (`success`/`toolTitle`/`toolOutput`/`error`/`dim`), details color parity, count-free labels, frame advancement, spinner reuse, stop behavior, partial args, theme failure/plain fallback, and no timer leaks after settlement.
 
 Satisfies:
+
 - R10, R11, R12
 - S10, S11, S12
 - A9, A10, A11
 - D6
 
 Depends on:
+
 - T4
 - T5
 
@@ -97,12 +108,14 @@ Depends on:
 - [x] Update README and verification evidence and run focused rendering, focused integration/registration, typecheck, and full suite.
 
 Satisfies:
+
 - R10, R11, R12
 - S10, S11, S12
 - A9, A10, A11
 - D6
 
 Depends on:
+
 - T7
 
 ## T9. Export/replay-safe spinner creation
@@ -114,12 +127,14 @@ Depends on:
 - [x] Update README/specification/verification and run focused rendering, focused integration/registration, typecheck, and full suite.
 
 Satisfies:
+
 - R10, R11, R12
 - S10, S11, S12
 - A9, A10, A11
 - D6
 
 Depends on:
+
 - T8
 
 ## T10. Pending spinner/label host-theme styling (final refinement)
@@ -131,10 +146,12 @@ Depends on:
 - [x] Update README/spec artifacts and run focused renderer, focused registration/integration, typecheck, and full suite.
 
 Satisfies:
+
 - R10, R11, R12
 - S10, S11, S12
 - A9, A10, A11
 - D6
 
 Depends on:
+
 - T9

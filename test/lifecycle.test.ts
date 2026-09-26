@@ -4,12 +4,19 @@ import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
-import { sanitizeSessionId, TaskStore, taskFilePath, turnStartStore } from "../src/store.js";
+import {
+  sanitizeSessionId,
+  TaskStore,
+  taskFilePath,
+  turnStartStore,
+} from "../src/store.js";
 
 const dirs: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(
+    dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+  );
 });
 
 async function freshCwd(): Promise<string> {
@@ -24,7 +31,9 @@ describe("filename sanitization", () => {
     expect(sanitized).toBe(sanitizeSessionId("a/b:c d"));
     expect(sanitized).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(sanitizeSessionId("a/b")).not.toBe(sanitizeSessionId("a:b"));
-    expect(taskFilePath("/work", "a/b")).toContain(`/work/.pi/tasks/tasks-${sanitizeSessionId("a/b")}.json`);
+    expect(taskFilePath("/work", "a/b")).toContain(
+      `/work/.pi/tasks/tasks-${sanitizeSessionId("a/b")}.json`,
+    );
   });
 });
 
@@ -63,9 +72,24 @@ describe("turn lifecycle", () => {
       version: 2,
       nextId: 2,
       tasks: [],
-      history: [{ tasks: [{ id: 1, subject: "a", status: "completed", log: [{ message: "start" }, { message: "finished" }] }] }] });
+      history: [
+        {
+          tasks: [
+            {
+              id: 1,
+              subject: "a",
+              status: "completed",
+              log: [{ message: "start" }, { message: "finished" }],
+            },
+          ],
+        },
+      ],
+    });
 
-    const recreated = await result.store.create({ subject: "new", description: "" });
+    const recreated = await result.store.create({
+      subject: "new",
+      description: "",
+    });
     expect(recreated.id).toBe(2);
   });
 
@@ -77,15 +101,26 @@ describe("turn lifecycle", () => {
     const removed = await store.create({ subject: "removed", description: "" });
     await store.update(done.id, { status: "in_progress", appendLog: "note" });
     await store.update(done.id, { status: "completed", appendLog: "note" });
-    await store.update(removed.id, { status: "deleted", appendLog: "out of scope" });
+    await store.update(removed.id, {
+      status: "deleted",
+      appendLog: "out of scope",
+    });
 
     const result = await turnStartStore(cwd, sessionId);
     expect(result.cleaned).toBe(true);
     expect(result.store.list()).toEqual([]);
-    expect(result.store.listHistory()).toMatchObject([{ tasks: [
-      { id: done.id, status: "completed" },
-      { id: removed.id, status: "deleted", log: [{ message: "out of scope" }] },
-    ] }]);
+    expect(result.store.listHistory()).toMatchObject([
+      {
+        tasks: [
+          { id: done.id, status: "completed" },
+          {
+            id: removed.id,
+            status: "deleted",
+            log: [{ message: "out of scope" }],
+          },
+        ],
+      },
+    ]);
   });
 
   it("keeps create-time archival as a fallback for an all-completed store", async () => {
@@ -100,9 +135,16 @@ describe("turn lifecycle", () => {
     const task = await store.create({ subject: "new", description: "" });
     expect(task.id).toBe(2);
     expect(store.list().map((entry) => entry.subject)).toEqual(["new"]);
-    expect(store.listHistory()).toMatchObject([{ tasks: [{ id: 1, subject: "old" }] }]);
-    expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({ version: 2, nextId: 3 });
-    expect((await TaskStore.load(path)).list().map((entry) => entry.subject)).toEqual(["new"]);
+    expect(store.listHistory()).toMatchObject([
+      { tasks: [{ id: 1, subject: "old" }] },
+    ]);
+    expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({
+      version: 2,
+      nextId: 3,
+    });
+    expect(
+      (await TaskStore.load(path)).list().map((entry) => entry.subject),
+    ).toEqual(["new"]);
   });
 
   it("preserves completed active tasks when archive-on-create validation fails (invalid subject)", async () => {
@@ -116,7 +158,9 @@ describe("turn lifecycle", () => {
     const beforeDisk = await readFile(path, "utf8");
     const before = store.list();
 
-    await expect(store.create({ subject: "  ", description: "" })).rejects.toThrow(/subject/);
+    await expect(
+      store.create({ subject: "  ", description: "" }),
+    ).rejects.toThrow(/subject/);
     expect(store.list()).toEqual(before);
     expect(await readFile(path, "utf8")).toBe(beforeDisk);
     expect((await TaskStore.load(path)).list()).toEqual(before);
@@ -137,15 +181,15 @@ describe("turn lifecycle", () => {
     const before = store.list();
 
     // Old IDs do not exist in the fresh active state; archival must fail atomically.
-    await expect(store.create({ subject: "new", description: "", blockedBy: [2] })).rejects.toThrow(
-      /does not exist/,
-    );
+    await expect(
+      store.create({ subject: "new", description: "", blockedBy: [2] }),
+    ).rejects.toThrow(/does not exist/);
     expect(store.list()).toEqual(before);
     expect(await readFile(path, "utf8")).toBe(beforeDisk);
 
-    await expect(store.create({ subject: "new", description: "", blockedBy: [1] })).rejects.toThrow(
-      /itself|does not exist/,
-    );
+    await expect(
+      store.create({ subject: "new", description: "", blockedBy: [1] }),
+    ).rejects.toThrow(/itself|does not exist/);
     expect(store.list()).toEqual(before);
     expect(await readFile(path, "utf8")).toBe(beforeDisk);
   });
@@ -163,7 +207,9 @@ describe("turn lifecycle", () => {
       throw new Error("simulated write failure");
     });
     const before = store.list();
-    await expect(store.archiveTerminalCycle()).rejects.toThrow(/simulated write failure/);
+    await expect(store.archiveTerminalCycle()).rejects.toThrow(
+      /simulated write failure/,
+    );
     expect(store.list()).toEqual(before);
     expect(await readFile(path, "utf8")).toBe(beforeDisk);
   });
@@ -183,7 +229,9 @@ describe("turn lifecycle", () => {
       if (failWrites) throw new Error("simulated write failure");
     });
     const before = store.list();
-    await expect(store.create({ subject: "new", description: "" })).rejects.toThrow(/simulated write failure/);
+    await expect(
+      store.create({ subject: "new", description: "" }),
+    ).rejects.toThrow(/simulated write failure/);
     expect(store.list()).toEqual(before);
     expect(await readFile(path, "utf8")).toBe(beforeDisk);
     expect((await TaskStore.load(path)).list()).toEqual(before);
@@ -191,7 +239,9 @@ describe("turn lifecycle", () => {
     failWrites = false;
     const created = await store.create({ subject: "new", description: "" });
     expect(created.id).toBe(2);
-    expect(store.listHistory()).toMatchObject([{ tasks: [{ id: 1, subject: "old" }] }]);
+    expect(store.listHistory()).toMatchObject([
+      { tasks: [{ id: 1, subject: "old" }] },
+    ]);
   });
 
   it("appends with the existing nextId when any task is still active", async () => {
@@ -215,24 +265,46 @@ describe("turn lifecycle", () => {
     const sessionId = "history-cycles";
     const path = taskFilePath(cwd, sessionId);
     const firstStore = await TaskStore.load(path);
-    const first = await firstStore.create({ subject: "first", description: "" });
-    await firstStore.update(first.id, { status: "in_progress", appendLog: "note" });
-    await firstStore.update(first.id, { status: "completed", appendLog: "note" });
+    const first = await firstStore.create({
+      subject: "first",
+      description: "",
+    });
+    await firstStore.update(first.id, {
+      status: "in_progress",
+      appendLog: "note",
+    });
+    await firstStore.update(first.id, {
+      status: "completed",
+      appendLog: "note",
+    });
     await turnStartStore(cwd, sessionId);
 
     const secondStore = await TaskStore.load(path);
-    const second = await secondStore.create({ subject: "second", description: "" });
+    const second = await secondStore.create({
+      subject: "second",
+      description: "",
+    });
     expect(second.id).toBe(2);
-    await secondStore.update(second.id, { status: "in_progress", appendLog: "note" });
-    await secondStore.update(second.id, { status: "completed", appendLog: "note" });
+    await secondStore.update(second.id, {
+      status: "in_progress",
+      appendLog: "note",
+    });
+    await secondStore.update(second.id, {
+      status: "completed",
+      appendLog: "note",
+    });
     const result = await turnStartStore(cwd, sessionId);
 
     expect(result.store.list()).toEqual([]);
-    expect(result.store.listHistory().map((cycle) => cycle.tasks.map((task) => task.subject))).toEqual([
-      ["first"],
-      ["second"],
-    ]);
-    expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({ version: 2, nextId: 3 });
+    expect(
+      result.store
+        .listHistory()
+        .map((cycle) => cycle.tasks.map((task) => task.subject)),
+    ).toEqual([["first"], ["second"]]);
+    expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({
+      version: 2,
+      nextId: 3,
+    });
   });
 
   it("keeps files with pending or mixed tasks at turn start", async () => {
@@ -270,7 +342,9 @@ describe("turn lifecycle", () => {
     const task = await next.create({ subject: "new", description: "" });
     expect(task.id).toBe(2);
     expect(next.list().map((entry) => entry.subject)).toEqual(["new"]);
-    expect(next.listHistory()).toMatchObject([{ tasks: [{ id: 1, subject: "old" }] }]);
+    expect(next.listHistory()).toMatchObject([
+      { tasks: [{ id: 1, subject: "old" }] },
+    ]);
   });
 });
 
@@ -279,10 +353,17 @@ describe("attempt counters across turn lifecycle", () => {
     const cwd = await freshCwd();
     const sessionId = "attempt-session";
     const store = await TaskStore.load(taskFilePath(cwd, sessionId));
-    const task = await store.create({ subject: "a", description: "", maxAttempts: 3 });
+    const task = await store.create({
+      subject: "a",
+      description: "",
+      maxAttempts: 3,
+    });
     await store.update(task.id, { status: "in_progress", appendLog: "note" });
     const result = await turnStartStore(cwd, sessionId);
     expect(result.cleaned).toBe(false);
-    expect(result.store.get(task.id)).toMatchObject({ attempt: 1, maxAttempts: 3 });
+    expect(result.store.get(task.id)).toMatchObject({
+      attempt: 1,
+      maxAttempts: 3,
+    });
   });
 });

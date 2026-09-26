@@ -47,7 +47,7 @@
 ## Inputs
 
 - `TaskUpdateBatchInput.status`: `pending | in_progress | paused |
-  completed | deleted`.
+completed | deleted`.
 - `transitionEligibility`: unchanged signature; `appendLog?` now gates
   every real transition, not just failure entry.
 
@@ -72,9 +72,9 @@
 - `in_progress → deleted` is rejected; pause first, then delete.
 - `pending → completed` and `completed → pending` are rejected; the legal
   paths are `pending → in_progress → completed` and `completed →
-  in_progress` (rework).
+in_progress` (rework).
 - Rework batch (reviewer `in_progress → paused` + writer `completed →
-  in_progress`) validates against the proposed final state regardless of
+in_progress`) validates against the proposed final state regardless of
   array order; resuming the reviewer later requires the writer `completed`.
 - Deleting a writer still requires its non-deleted reviewers to delete in
   the same batch; `paused` reviewers count as referencers.

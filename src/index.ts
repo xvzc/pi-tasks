@@ -10,9 +10,16 @@
  * these tools.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
-import { DEFAULT_CONFIG, loadPiTasksConfig, type PiTasksConfig } from "./config.js";
+import {
+  DEFAULT_CONFIG,
+  loadPiTasksConfig,
+  type PiTasksConfig,
+} from "./config.js";
 import { TaskError, TaskStore, taskFilePath, turnStartStore } from "./store.js";
 import { createTasksViewer } from "./tasks-ui.js";
 import {
@@ -36,25 +43,30 @@ import {
 } from "./widget.js";
 
 const WIDGET_KEY = "tasks";
-const TASK_MANAGEMENT_START = "<task-management>";
+const TASK_MANAGEMENT_TAG = "task-management";
+const TASK_MANAGEMENT_TAG_START = `<${TASK_MANAGEMENT_TAG}>`;
+const TASK_MANAGEMENT_TAG_END = `</${TASK_MANAGEMENT_TAG}>`;
 
-/** Concise Assignment guidance injected only when `enableAssignee` is true. */
-const TASK_MANAGEMENT_ASSIGNMENT_SECTION = `## Assignment
-
-Use \`assignee\` only when the intended owner or agent type is known; it records ownership only and does not dispatch, start, or authorize execution. Do not invent an assignee. Use \`assignee: null\` to remove an existing assignment.`;
-
-const TaskId = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER, description: "Numeric task ID." });
+const TaskId = Type.Integer({
+  minimum: 1,
+  maximum: Number.MAX_SAFE_INTEGER,
+  description: "Numeric task ID.",
+});
 const CreateBlockedBy = Type.Array(TaskId, {
-  description: "IDs of tasks whose outputs are required before this task can start. Referenced tasks must already exist.",
+  description:
+    "IDs of tasks whose outputs are required before this task can start. Referenced tasks must already exist.",
 });
 const UpdateBlockedBy = Type.Array(TaskId, {
-  description: "Replacement dependency list. Every referenced task must already exist.",
+  description:
+    "Replacement dependency list. Every referenced task must already exist.",
 });
 const CreateReviewOf = Type.Array(TaskId, {
-  description: "IDs of existing writer tasks reviewed by this task. Writers are effective prerequisites; do not duplicate in blockedBy.",
+  description:
+    "IDs of existing writer tasks reviewed by this task. Writers are effective prerequisites; do not duplicate in blockedBy.",
 });
 const UpdateReviewOf = Type.Array(TaskId, {
-  description: "Replacement list of writer task IDs reviewed by this task. Writers are effective prerequisites; do not duplicate in blockedBy.",
+  description:
+    "Replacement list of writer task IDs reviewed by this task. Writers are effective prerequisites; do not duplicate in blockedBy.",
 });
 const CreateMetadata = Type.Record(Type.String(), Type.Unknown(), {
   description: "Free-form task metadata. Never include secrets.",
@@ -91,7 +103,8 @@ const TaskListStatus = Type.Union(
 
 const TaskRef = Type.String({
   pattern: "^[a-z][a-z0-9_-]*$",
-  description: "Request-local task reference slug. Used only within this batch and never persisted.",
+  description:
+    "Request-local task reference slug. Used only within this batch and never persisted.",
 });
 
 const CreateCommonProperties = {
@@ -102,40 +115,83 @@ const CreateCommonProperties = {
       "Task detail. Include scope, expected output, acceptance checks, and relevant constraints or stop conditions. Write in English unless governing instructions require another language. Never include secrets.",
   }),
   blockedBy: Type.Optional(CreateBlockedBy),
-  blockedByRefs: Type.Optional(Type.Array(TaskRef, {
-    description: "Request-local refs of tasks in this batch whose outputs are required before this task can start.",
-  })),
+  blockedByRefs: Type.Optional(
+    Type.Array(TaskRef, {
+      description:
+        "Request-local refs of tasks in this batch whose outputs are required before this task can start.",
+    }),
+  ),
   reviewOf: Type.Optional(CreateReviewOf),
-  reviewOfRefs: Type.Optional(Type.Array(TaskRef, {
-    description: "Request-local refs of writer tasks in this batch reviewed by this task. Writers are effective prerequisites; do not duplicate in blockedByRefs. Never persisted.",
-  })),
+  reviewOfRefs: Type.Optional(
+    Type.Array(TaskRef, {
+      description:
+        "Request-local refs of writer tasks in this batch reviewed by this task. Writers are effective prerequisites; do not duplicate in blockedByRefs. Never persisted.",
+    }),
+  ),
   metadata: Type.Optional(CreateMetadata),
 };
 
-const CreateAssigneeProperty = {
-  assignee: Type.Optional(Type.String({ description: "Assigned owner or agent." })),
+const AssignmentSchema = Type.Union(
+  [
+    Type.Object(
+      {
+        delegate: Type.Literal(false),
+        owner: Type.Null(),
+      },
+      { additionalProperties: false },
+    ),
+
+    Type.Object(
+      {
+        delegate: Type.Literal(true),
+        owner: Type.String({
+          minLength: 1,
+          description:
+            "Opaque non-empty subagent type. Runtime availability is validated outside pi-tasks.",
+        }),
+      },
+      { additionalProperties: false },
+    ),
+  ],
+  {
+    description:
+      'Planning-only assignment. Direct work uses { delegate: false, owner: null }; delegated work uses { delegate: true, owner: "<subagent type>" }. Pi-tasks preserves delegated owners without runtime discovery and never dispatches work.',
+  },
+);
+
+const CreateAssignmentProperty = {
+  assignment: Type.Optional(AssignmentSchema),
 };
 
 const UpdateCommonProperties = {
   id: TaskId,
   subject: Type.Optional(Type.String({ description: "New title." })),
-  description: Type.Optional(Type.String({
-    description:
-      "Replacement task definition. Do not use for progress, validation, blockers, rework, pause reasons, or handoffs; use appendLog.",
-  })),
+  description: Type.Optional(
+    Type.String({
+      description:
+        "Replacement task definition. Do not use for progress, validation, blockers, rework, pause reasons, or handoffs; use `appendLog` instead.",
+    }),
+  ),
   status: Type.Optional(Status),
   blockedBy: Type.Optional(UpdateBlockedBy),
   reviewOf: Type.Optional(UpdateReviewOf),
   metadata: Type.Optional(UpdateMetadata),
-  appendLog: Type.Optional(Type.String({
-    minLength: 1,
-    description:
-      "Execution note appended with a timestamp. Must be non-blank (trimmed). Use for validation evidence, blockers, review findings, rework requests, pause reasons, and handoffs. Required for every real status transition.",
-  })),
+  appendLog: Type.Optional(
+    Type.String({
+      minLength: 1,
+      description:
+        "Execution note appended with a timestamp. Must be non-blank (trimmed). Use for validation evidence, blockers, review findings, rework requests, pause reasons, and handoffs. Required for every real status transition.",
+    }),
+  ),
 };
 
-const UpdateAssigneeProperty = {
-  assignee: Type.Optional(Type.Union([Type.String(), Type.Null()], { description: "New assignee, or null to remove it." })),
+const UpdateAssignmentProperty = {
+  assignment: Type.Optional(
+    Type.Union([AssignmentSchema, Type.Null()], {
+      description:
+        'Whole replacement planning-only assignment, or null to remove it. Direct is { delegate: false, owner: null }; delegated is { delegate: true, owner: "<subagent type>" }. Pi-tasks preserves delegated owners without runtime discovery and never dispatches work.',
+    }),
+  ),
 };
 
 const TaskGetParams = Type.Object({
@@ -156,13 +212,23 @@ function textResult(text: string, details?: TaskToolRenderDetails) {
   return { content: [{ type: "text" as const, text }], details };
 }
 
-function errorResult(text: string, details?: TaskToolRenderDetails): ErrorResult {
-  return { content: [{ type: "text" as const, text }], details, isError: true as const };
+function errorResult(
+  text: string,
+  details?: TaskToolRenderDetails,
+): ErrorResult {
+  return {
+    content: [{ type: "text" as const, text }],
+    details,
+    isError: true as const,
+  };
 }
 
 function invalidIdResult(id: unknown): ErrorResult {
   const text = `Invalid task id: ${String(id)}. Expected a positive safe integer.`;
-  return errorResult(text, taskRenderDetails(() => renderTaskToolError("get", text, id, true)));
+  return errorResult(
+    text,
+    taskRenderDetails(() => renderTaskToolError("get", text, id, true)),
+  );
 }
 
 function isValidId(id: unknown): id is number {
@@ -181,7 +247,9 @@ type WidgetRefresh = (ctx: ExtensionContext, store: TaskStore) => void;
  * component snapshot and request a redraw without calling `setWidget()` again,
  * preserving the host's insertion order relative to other extension widgets.
  */
-function createWidgetRefresher(config: PiTasksConfig = DEFAULT_CONFIG): WidgetRefresh {
+function createWidgetRefresher(
+  config: PiTasksConfig = DEFAULT_CONFIG,
+): WidgetRefresh {
   let currentUI: WidgetUI | undefined;
   let currentSession: string | undefined;
   let widgetRegistered = false;
@@ -207,7 +275,8 @@ function createWidgetRefresher(config: PiTasksConfig = DEFAULT_CONFIG): WidgetRe
       snapshot = store.list();
       timing = store.activeTiming();
       if (snapshot.length === 0) {
-        if (widgetRegistered || contextChanged) ui.setWidget(WIDGET_KEY, undefined);
+        if (widgetRegistered || contextChanged)
+          ui.setWidget(WIDGET_KEY, undefined);
         widgetRegistered = false;
         component = undefined;
         return;
@@ -290,28 +359,49 @@ export const TASKS_OVERLAY_OPTIONS = {
 /** Inline `/tasks` menu labels with live counts. */
 export function tasksMenuLabels(tasks: Task[]): [string, string, string] {
   const completed = tasks.filter((task) => task.status === "completed").length;
-  return [`View all tasks (${tasks.length})`, `Clear completed (${completed})`, `Clear all (${tasks.length})`];
+  return [
+    `View all tasks (${tasks.length})`,
+    `Clear completed (${completed})`,
+    `Clear all (${tasks.length})`,
+  ];
 }
 
 export default function (pi: ExtensionAPI) {
   const config = loadPiTasksConfig();
   const refreshWidget = createWidgetRefresher(config);
-
-  const TaskCreateParams = Type.Object({
-    tasks: Type.Array(Type.Object({
-      ...CreateCommonProperties,
-      ...(config.enableAssignee ? CreateAssigneeProperty : {}),
-    } as typeof CreateCommonProperties & typeof CreateAssigneeProperty, { additionalProperties: false }), { minItems: 1, description: "Tasks to create atomically." }),
-  }, { additionalProperties: false });
+  const TaskCreateParams = Type.Object(
+    {
+      tasks: Type.Array(
+        Type.Object(
+          {
+            ...CreateCommonProperties,
+            ...(config.enableAssignment ? CreateAssignmentProperty : {}),
+          } as typeof CreateCommonProperties & typeof CreateAssignmentProperty,
+          { additionalProperties: false },
+        ),
+        { minItems: 1, description: "Tasks to create atomically." },
+      ),
+    },
+    { additionalProperties: false },
+  );
 
   const TaskUpdateParams = Type.Object({
-    updates: Type.Array(Type.Object({
-      ...UpdateCommonProperties,
-      ...(config.enableAssignee ? UpdateAssigneeProperty : {}),
-    } as typeof UpdateCommonProperties & typeof UpdateAssigneeProperty, { additionalProperties: false }), { minItems: 1, description: "Declarative task patches to apply atomically." }),
+    updates: Type.Array(
+      Type.Object(
+        {
+          ...UpdateCommonProperties,
+          ...(config.enableAssignment ? UpdateAssignmentProperty : {}),
+        } as typeof UpdateCommonProperties & typeof UpdateAssignmentProperty,
+        { additionalProperties: false },
+      ),
+      {
+        minItems: 1,
+        description: "Declarative task patches to apply atomically.",
+      },
+    ),
   });
 
-  const taskManagementPrompt = `${TASK_MANAGEMENT_START}
+  const taskManagementPrompt = `${TASK_MANAGEMENT_TAG_START}
 
 ## Scope
 
@@ -322,19 +412,19 @@ validation, or incidental implementation details of one bounded change.
 ## Initial Materialization
 
 Before the first task_create call, determine the currently known execution task
-set, including meaningful deliverables,${config.enableAssignee ? " owners," : ""} acceptance checks, and actual
+set, including meaningful deliverables,${config.enableAssignment ? " assignments," : ""} acceptance checks, and actual
 dependencies, then create that set in one atomic batch.
 
 Keep task definitions outcome-oriented and free of incidental implementation
 details.
 
 When an active plan exists, task records must reflect that plan without changing
-its scope,${config.enableAssignee ? " ownership," : ""} dependencies, or acceptance criteria.
+its scope,${config.enableAssignment ? " assignments," : ""} dependencies, or acceptance criteria.
 
 Within one task_create batch, use blockedByRefs for local dependencies and
 reviewOfRefs for local review targets; numeric blockedBy/reviewOf are for
 existing tasks only. reviewOf is already an effective prerequisite; do not
-duplicate the same writer in blockedBy/blockedByRefs.${config.enableAssignee ? `\n\n${TASK_MANAGEMENT_ASSIGNMENT_SECTION}` : ""}
+duplicate the same writer in blockedBy/blockedByRefs.
 
 ## Lifecycle
 
@@ -376,7 +466,7 @@ leave unrelated independent work unaffected.
 Use the terminal deleted status only when a task is intentionally removed from
 scope; NEVER use it to conceal unfinished or unsuccessful work.
 
-</task-management>`;
+${TASK_MANAGEMENT_TAG_END}`;
 
   pi.on("session_start", async (_event, ctx) => {
     await refreshWidgetForSession(ctx, refreshWidget);
@@ -386,32 +476,64 @@ scope; NEVER use it to conceal unfinished or unsuccessful work.
     await refreshWidgetForSession(ctx, refreshWidget, true);
   });
 
-  pi.on("before_agent_start", (event) => {
-    if (!event.systemPromptOptions.selectedTools?.includes("task_create")) return;
-    if (event.systemPrompt.includes(TASK_MANAGEMENT_START)) return;
-    return { systemPrompt: `${event.systemPrompt}\n\n${taskManagementPrompt}` };
-  });
+  // System-prompt chaining (distinct from tool promptSnippet/summary
+  // descriptions, which stay unchanged either way). The handler is registered
+  // only when `injectGuidelines` is true; when false, nothing is appended.
+  // Selected-tools gating and the duplicate-block guard match the original
+  // 69135c4 behavior: inject only while task_create is active, and leave an
+  // existing block unchanged (chained handlers from other extensions may
+  // have already appended it).
+  if (config.injectGuidelines) {
+    pi.on("before_agent_start", (event) => {
+      if (!event.systemPromptOptions.selectedTools?.includes("task_create"))
+        return;
+      if (event.systemPrompt.includes(TASK_MANAGEMENT_TAG_START)) return;
+      return {
+        systemPrompt: `${event.systemPrompt}\n\n${taskManagementPrompt}`,
+      };
+    });
+  }
 
   pi.registerCommand("tasks", {
     description: "View and clear session tasks.",
     handler: async (_args, ctx) => {
-      const store = await TaskStore.load(taskFilePath(ctx.cwd, sessionIdOf(ctx)));
-      const [viewLabel, clearCompletedLabel, clearAllLabel] = tasksMenuLabels(store.list());
-      const choice = await ctx.ui.select("Tasks", [viewLabel, clearCompletedLabel, clearAllLabel]);
+      const store = await TaskStore.load(
+        taskFilePath(ctx.cwd, sessionIdOf(ctx)),
+      );
+      const [viewLabel, clearCompletedLabel, clearAllLabel] = tasksMenuLabels(
+        store.list(),
+      );
+      const choice = await ctx.ui.select("Tasks", [
+        viewLabel,
+        clearCompletedLabel,
+        clearAllLabel,
+      ]);
       if (choice === undefined) return;
       if (choice === viewLabel) {
         if (ctx.mode !== "tui") {
-          ctx.ui.notify("Task viewer requires an interactive terminal session.", "warning");
+          ctx.ui.notify(
+            "Task viewer requires an interactive terminal session.",
+            "warning",
+          );
           return;
         }
         try {
           await ctx.ui.custom<void>(
             (tui, theme, keybindings, done) =>
-              createTasksViewer(store.list(), { done: () => done(undefined as never), theme, tui, keybindings, config }),
+              createTasksViewer(store.list(), {
+                done: () => done(undefined as never),
+                theme,
+                tui,
+                keybindings,
+                config,
+              }),
             { overlay: true, overlayOptions: { ...TASKS_OVERLAY_OPTIONS } },
           );
         } catch (error) {
-          ctx.ui.notify(`Task viewer failed: ${error instanceof Error ? error.message : String(error)}.`, "error");
+          ctx.ui.notify(
+            `Task viewer failed: ${error instanceof Error ? error.message : String(error)}.`,
+            "error",
+          );
         }
         return;
       }
@@ -466,23 +588,45 @@ scope; NEVER use it to conceal unfinished or unsuccessful work.
   pi.registerTool({
     name: "task_create",
     label: "Create tasks",
-    description:
-      "Create one or more pending tasks atomically in the current session's task list. Every task uses the configured maxAttempts cap (8 unless pi-tasks.json overrides it; 0 means unlimited). Use blockedByRefs and reviewOfRefs for links between tasks created in the same request. Task creation records work state; it does not execute work or dispatch an agent.",
-    promptSnippet: "Track multi-step work with the task_create/task_update/task_get/task_list tools.",
+    description: `Use this tool to create pending tasks atomically for tracking work state in the current session.`,
+    promptSnippet:
+      "Track multi-step work with the task_create/task_update/task_get/task_list tools.",
     parameters: TaskCreateParams,
     executionMode: "sequential",
-    async execute(_toolCallId, params: Static<typeof TaskCreateParams>, _signal, _onUpdate, ctx) {
+    async execute(
+      _toolCallId,
+      params: Static<typeof TaskCreateParams>,
+      _signal,
+      _onUpdate,
+      ctx,
+    ) {
       const filePath = taskFilePath(ctx.cwd, sessionIdOf(ctx));
       const store = await TaskStore.load(filePath);
       try {
         if ("maxAttempts" in (params as unknown as Record<string, unknown>)) {
-          const text = "`maxAttempts` cannot be set per task; configure `maxAttempts` in pi-tasks.json.";
-          return errorResult(text, taskRenderDetails(() => renderTaskToolError("create", text, undefined, true)));
+          const text =
+            "`maxAttempts` cannot be set per task; configure `maxAttempts` in pi-tasks.json.";
+          return errorResult(
+            text,
+            taskRenderDetails(() =>
+              renderTaskToolError("create", text, undefined, true),
+            ),
+          );
         }
         for (const task of params.tasks) {
-          if (task !== null && typeof task === "object" && "maxAttempts" in task) {
-            const text = "`maxAttempts` cannot be set per task; configure `maxAttempts` in pi-tasks.json.";
-            return errorResult(text, taskRenderDetails(() => renderTaskToolError("create", text, undefined, true)));
+          if (
+            task !== null &&
+            typeof task === "object" &&
+            "maxAttempts" in task
+          ) {
+            const text =
+              "`maxAttempts` cannot be set per task; configure `maxAttempts` in pi-tasks.json.";
+            return errorResult(
+              text,
+              taskRenderDetails(() =>
+                renderTaskToolError("create", text, undefined, true),
+              ),
+            );
           }
         }
         const created = await store.createMany(
@@ -493,11 +637,21 @@ scope; NEVER use it to conceal unfinished or unsuccessful work.
           config.maxAttempts,
         );
         refreshWidget(ctx, store);
-        return textResult(JSON.stringify(created, null, 2), taskRenderDetails(() => renderTaskCreate(created.tasks, config)));
+        return textResult(
+          JSON.stringify(created, null, 2),
+          taskRenderDetails(() => renderTaskCreate(created.tasks)),
+        );
       } catch (error) {
         return errorResult(
           error instanceof TaskError ? error.message : String(error),
-          taskRenderDetails(() => renderTaskToolError("create", error, undefined, error instanceof TaskError)),
+          taskRenderDetails(() =>
+            renderTaskToolError(
+              "create",
+              error,
+              undefined,
+              error instanceof TaskError,
+            ),
+          ),
         );
       }
     },
@@ -505,28 +659,47 @@ scope; NEVER use it to conceal unfinished or unsuccessful work.
       return renderTaskCall("Creating tasks…", context, theme);
     },
     renderResult(result, options, theme, context) {
-      return renderTaskResult(result, options.expanded, context?.isError === true, "create", undefined, theme, context);
+      return renderTaskResult(
+        result,
+        options.expanded,
+        context?.isError === true,
+        "create",
+        undefined,
+        theme,
+        context,
+      );
     },
   });
 
   pi.registerTool({
     name: "task_update",
     label: "Update tasks",
-    description:
-      "Patch one or more tasks atomically. Validation is performed against the complete proposed final state rather than update-array order.",
+    description: `Use this tool to patch one or more tasks atomically as a declarative patch set. Patches apply to a cloned proposed state, not as a command sequence.
+Lifecycle and dependency rules are evaluated from original state to the complete proposed final state.`,
     parameters: TaskUpdateParams,
     executionMode: "sequential",
-    async execute(_toolCallId, params: Static<typeof TaskUpdateParams>, _signal, _onUpdate, ctx) {
-      const store = await TaskStore.load(taskFilePath(ctx.cwd, sessionIdOf(ctx)));
+    async execute(
+      _toolCallId,
+      params: Static<typeof TaskUpdateParams>,
+      _signal,
+      _onUpdate,
+      ctx,
+    ) {
+      const store = await TaskStore.load(
+        taskFilePath(ctx.cwd, sessionIdOf(ctx)),
+      );
       try {
-        const previousTasks = new Map(params.updates.map((update) => [update.id, store.get(update.id)]));
-        const previousStatuses = new Map([...previousTasks].map(([id, task]) => [id, task?.status]));
-        const updated = await store.updateMany(
-          params.updates.map((update) => ({
-            ...update,
-            metadata: update.metadata as Record<string, unknown> | undefined,
-          })),
+        const storeUpdates = params.updates.map((update) => ({
+          ...update,
+          metadata: update.metadata as Record<string, unknown> | undefined,
+        }));
+        const previousTasks = new Map(
+          storeUpdates.map((update) => [update.id, store.get(update.id)]),
         );
+        const previousStatuses = new Map(
+          [...previousTasks].map(([id, task]) => [id, task?.status]),
+        );
+        const updated = await store.updateMany(storeUpdates);
         refreshWidget(ctx, store);
         for (const task of updated) {
           if (
@@ -551,7 +724,11 @@ scope; NEVER use it to conceal unfinished or unsuccessful work.
             try {
               const notify = (ctx.ui as unknown as { notify?: unknown }).notify;
               if (typeof notify === "function") {
-                (notify as (message: string, level: string) => unknown).call(ctx.ui, warning, "warning");
+                (notify as (message: string, level: string) => unknown).call(
+                  ctx.ui,
+                  warning,
+                  "warning",
+                );
               }
             } catch {
               // Notification failures must not fail a persisted update.
@@ -560,15 +737,28 @@ scope; NEVER use it to conceal unfinished or unsuccessful work.
         }
         return textResult(
           JSON.stringify({ updated }, null, 2),
-          taskRenderDetails(() => renderTaskUpdate(updated.flatMap((after) => {
-            const before = previousTasks.get(after.id);
-            return before ? [{ before, after }] : [];
-          }), config, store.list())),
+          taskRenderDetails(() =>
+            renderTaskUpdate(
+              updated.flatMap((after) => {
+                const before = previousTasks.get(after.id);
+                return before ? [{ before, after }] : [];
+              }),
+              config,
+              store.list(),
+            ),
+          ),
         );
       } catch (error) {
         return errorResult(
           error instanceof TaskError ? error.message : String(error),
-          taskRenderDetails(() => renderTaskToolError("update", error, undefined, error instanceof TaskError)),
+          taskRenderDetails(() =>
+            renderTaskToolError(
+              "update",
+              error,
+              undefined,
+              error instanceof TaskError,
+            ),
+          ),
         );
       }
     },
@@ -576,55 +766,120 @@ scope; NEVER use it to conceal unfinished or unsuccessful work.
       return renderTaskCall("Updating tasks…", context, theme);
     },
     renderResult(result, options, theme, context) {
-      return renderTaskResult(result, options.expanded, context?.isError === true, "update", undefined, theme, context);
+      return renderTaskResult(
+        result,
+        options.expanded,
+        context?.isError === true,
+        "update",
+        undefined,
+        theme,
+        context,
+      );
     },
   });
 
   pi.registerTool({
     name: "task_get",
     label: "Get task",
-    description: "Return the full details of one task by numeric ID, including dependencies, metadata, and execution log.",
+    description: `Use this tool to return the full details of one task by numeric ID.
+
+Details include dependencies, metadata, and the execution log.`,
     parameters: TaskGetParams,
-    async execute(_toolCallId, params: Static<typeof TaskGetParams>, _signal, _onUpdate, _ctx) {
+    async execute(
+      _toolCallId,
+      params: Static<typeof TaskGetParams>,
+      _signal,
+      _onUpdate,
+      _ctx,
+    ) {
       if (!isValidId(params.id)) return invalidIdResult(params.id);
-      const store = await TaskStore.load(taskFilePath(_ctx.cwd, sessionIdOf(_ctx)));
+      const store = await TaskStore.load(
+        taskFilePath(_ctx.cwd, sessionIdOf(_ctx)),
+      );
       const task = store.get(params.id);
       if (!task) {
         const text = `Task #${params.id} does not exist.`;
-        return errorResult(text, taskRenderDetails(() => renderTaskToolError("get", text, params.id, true)));
+        return errorResult(
+          text,
+          taskRenderDetails(() =>
+            renderTaskToolError("get", text, params.id, true),
+          ),
+        );
       }
-      return textResult(JSON.stringify(task, null, 2), taskRenderDetails(() => renderTaskGet(task, store.list(), config)));
+      return textResult(
+        JSON.stringify(task, null, 2),
+        taskRenderDetails(() => renderTaskGet(task, store.list(), config)),
+      );
     },
     renderCall(_args, theme, context) {
       return renderTaskCall("Retrieving task…", context, theme);
     },
     renderResult(result, options, theme, context) {
-      return renderTaskResult(result, options.expanded, context?.isError === true, "get", context?.args?.id, theme, context);
+      return renderTaskResult(
+        result,
+        options.expanded,
+        context?.isError === true,
+        "get",
+        context?.args?.id,
+        theme,
+        context,
+      );
     },
   });
 
   pi.registerTool({
     name: "task_list",
     label: "List tasks",
-    description: "List tasks in the current session's task list, optionally filtered by status.",
+    description: `Use this tool to list tasks in the current session's task list.
+Pass a status filter for one lifecycle state, or omit it for the full list.
+Use it for an overview of task state across the session.`,
     parameters: TaskListParams,
-    async execute(_toolCallId, params: Static<typeof TaskListParams>, _signal, _onUpdate, ctx) {
-      const status = params.status !== undefined && isTaskStatus(params.status) ? params.status : undefined;
+    async execute(
+      _toolCallId,
+      params: Static<typeof TaskListParams>,
+      _signal,
+      _onUpdate,
+      ctx,
+    ) {
+      const status =
+        params.status !== undefined && isTaskStatus(params.status)
+          ? params.status
+          : undefined;
       if (params.status !== undefined && status === undefined) {
         const text = `Invalid status: ${String(params.status)}.`;
-        return errorResult(text, taskRenderDetails(() => renderTaskToolError("list", text, undefined, true)));
+        return errorResult(
+          text,
+          taskRenderDetails(() =>
+            renderTaskToolError("list", text, undefined, true),
+          ),
+        );
       }
-      const store = await TaskStore.load(taskFilePath(ctx.cwd, sessionIdOf(ctx)));
+      const store = await TaskStore.load(
+        taskFilePath(ctx.cwd, sessionIdOf(ctx)),
+      );
       const allTasks = store.list();
-      const tasks = status === undefined ? allTasks : allTasks.filter((task) => task.status === status);
-      return textResult(JSON.stringify(tasks, null, 2), taskRenderDetails(() => renderTaskList(tasks, status, config, allTasks)));
+      const tasks =
+        status === undefined
+          ? allTasks
+          : allTasks.filter((task) => task.status === status);
+      return textResult(
+        JSON.stringify(tasks, null, 2),
+        taskRenderDetails(() => renderTaskList(tasks, status, allTasks)),
+      );
     },
     renderCall(_args, theme, context) {
       return renderTaskCall("Listing tasks…", context, theme);
     },
     renderResult(result, options, theme, context) {
-      return renderTaskResult(result, options.expanded, context?.isError === true, "list", undefined, theme, context);
+      return renderTaskResult(
+        result,
+        options.expanded,
+        context?.isError === true,
+        "list",
+        undefined,
+        theme,
+        context,
+      );
     },
   });
-
 }

@@ -62,11 +62,22 @@ Renderer failure → catch and fall back to plain display (E3); model path unaff
 // after singular/plural substitution (never emit literal "task(s)").
 type CollapsedExpanded = { collapsed: string; expanded: string };
 function renderTaskCreate(result: TaskCreateResult): CollapsedExpanded;
-function renderTaskUpdate(before: Task, after: Task, input: UpdateInput): CollapsedExpanded;
+function renderTaskUpdate(
+  before: Task,
+  after: Task,
+  input: UpdateInput,
+): CollapsedExpanded;
 function renderTaskGet(task: Task): CollapsedExpanded;
 function renderTaskList(tasks: Task[], filter?: string): CollapsedExpanded;
-function renderTaskDelete(id: string, preDeleteSubject?: string, ok: boolean): CollapsedExpanded;
-function renderTaskToolError(operation: TaskOperation, err: unknown): CollapsedExpanded;
+function renderTaskDelete(
+  id: string,
+  preDeleteSubject?: string,
+  ok: boolean,
+): CollapsedExpanded;
+function renderTaskToolError(
+  operation: TaskOperation,
+  err: unknown,
+): CollapsedExpanded;
 ```
 
 ## Decisions

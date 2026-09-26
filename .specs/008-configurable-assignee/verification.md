@@ -5,7 +5,7 @@
 - `npm run typecheck` → pass (`tsc --noEmit`, no output).
 - `npm test` → pass: `Test Files 18 passed (18)`, `Tests 364 passed (364)`.
 - Focused: `config + tools + widget + tasks-ui + tool-rendering +
-  session-start + assignee-config` → 7 files / 183 tests pass.
+session-start + assignee-config` → 7 files / 183 tests pass.
 - Baseline per assignment: 17 files / 346 tests passing, typecheck
   passing. Net change: +1 file (`test/assignee-config.test.ts`, 14 tests),
   +4 tests in existing suites (3 config, 1 tools).
@@ -38,7 +38,7 @@
   write occurs solely due to the flag; `semanticDiff` still reports
   `assignee` while its rendering is gated.
 - Leakage audit (`grep -rn -i "assignee|owners|ownership|Assignment"
-  src/`): every human-facing occurrence is behind
+src/`): every human-facing occurrence is behind
   `config.enableAssignee`; remaining bare occurrences are store persistence
   (`store.ts`/`types.ts`, untouched), `semanticDiff` truth, and schema
   property definitions consumed only through the conditional spread.

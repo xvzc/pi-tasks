@@ -3,32 +3,56 @@
  * Pure helpers plus a keyboard-driven component using public pi-tui APIs.
  */
 
-import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+  matchesKey,
+  truncateToWidth,
+  visibleWidth,
+} from "@earendil-works/pi-tui";
 import type { KeybindingsManager } from "@earendil-works/pi-tui";
 import type { Task } from "./types.js";
 import type { ThemeLike } from "./widget.js";
-import { attemptCounter, blockedBySuffix, statusGlyphFor } from "./widget.js";
+import {
+  assignmentLabel,
+  attemptCounter,
+  blockedBySuffix,
+  statusGlyphFor,
+} from "./widget.js";
 import { DEFAULT_CONFIG, type PiTasksConfig } from "./config.js";
 
 /** Visible detail rows in the right pane; PageUp/PageDown move by this amount. */
 export const TASK_VIEWER_PAGE_SIZE = 10;
 
 /** Single-line label for the left task list. The counter is omitted for unlimited tasks (`maxAttempts` 0). */
-export function taskRowLabel(task: Task, config: PiTasksConfig = DEFAULT_CONFIG, tasks: readonly Task[] = [task]): string {
+export function taskRowLabel(
+  task: Task,
+  tasks: readonly Task[] = [task],
+): string {
   const deleted = task.status === "deleted" ? " [deleted]" : "";
-  return `${statusGlyphFor(task, tasks, config)} #${task.id}${attemptCounter(task)} ${task.subject}${deleted}${blockedBySuffix(task)}`;
+  return `${statusGlyphFor(task, tasks)} #${task.id}${attemptCounter(task)} ${task.subject}${deleted}${blockedBySuffix(task)}`;
 }
 
-/** Full detail lines for the right pane (plain text; the component truncates). The attempt counter is omitted for unlimited tasks (`maxAttempts` 0). The Assignee row is shown only when `enableAssignee` is true. */
-export function buildTaskDetailLines(task: Task, config: PiTasksConfig = DEFAULT_CONFIG): string[] {
+/** Full detail lines for the right pane (plain text; the component truncates). The attempt counter is omitted for unlimited tasks (`maxAttempts` 0). The Assignment row is shown only when `enableAssignment` is true. */
+export function buildTaskDetailLines(
+  task: Task,
+  config: PiTasksConfig = DEFAULT_CONFIG,
+): string[] {
   const lines: string[] = [
     `Status: ${task.status}`,
     `Task: #${task.id}${attemptCounter(task)}`,
-    ...(config.enableAssignee ? [`Assignee: ${task.assignee === undefined ? "(none)" : `@${task.assignee}`}`] : []),
+    ...(config.enableAssignment
+      ? [`Assignment: ${assignmentLabel(task) || "(none)"}`]
+      : []),
     `Subject: ${task.subject}`,
-    ...task.description.split("\n").map((line, index) => `${index === 0 ? "Description" : "           "}: ${line}`),
+    ...task.description
+      .split("\n")
+      .map(
+        (line, index) =>
+          `${index === 0 ? "Description" : "           "}: ${line}`,
+      ),
     `Blocked by: ${task.blockedBy.length === 0 ? "(none)" : task.blockedBy.map((id) => `#${id}`).join(", ")}`,
-    ...(task.reviewOf.length === 0 ? [] : [`Review of: ${task.reviewOf.map((id) => `#${id}`).join(", ")}`]),
+    ...(task.reviewOf.length === 0
+      ? []
+      : [`Review of: ${task.reviewOf.map((id) => `#${id}`).join(", ")}`]),
     `Created: ${task.createdAt}`,
     `Updated: ${task.updatedAt}`,
   ];
@@ -36,7 +60,8 @@ export function buildTaskDetailLines(task: Task, config: PiTasksConfig = DEFAULT
   if (task.tookMs !== undefined) lines.push(`Took: ${task.tookMs}ms`);
   lines.push(`Metadata: ${JSON.stringify(task.metadata)}`);
   lines.push(`Log (${task.log.length}):`);
-  for (const entry of task.log) lines.push(`  [${entry.timestamp}] ${entry.message}`);
+  for (const entry of task.log)
+    lines.push(`  [${entry.timestamp}] ${entry.message}`);
   return lines;
 }
 
@@ -67,7 +92,11 @@ function matchesBinding(
   }
 }
 
-function addBorder(lines: string[], width: number, theme?: ThemeLike): string[] {
+function addBorder(
+  lines: string[],
+  width: number,
+  theme?: ThemeLike,
+): string[] {
   const paint = (text: string): string => {
     if (!theme) return text;
     try {
@@ -76,7 +105,8 @@ function addBorder(lines: string[], width: number, theme?: ThemeLike): string[] 
       return text;
     }
   };
-  if (width === 1) return [paint("╷"), ...lines.map(() => paint("│")), paint("╵")];
+  if (width === 1)
+    return [paint("╷"), ...lines.map(() => paint("│")), paint("╵")];
   const innerWidth = width - 2;
   const horizontal = "─".repeat(innerWidth);
   return [
@@ -94,12 +124,15 @@ export interface TasksViewerOptions {
   done: () => void;
   theme?: ThemeLike;
   /** Request a redraw after navigation (the TUI object from the custom factory). */
-  tui?: { requestRender?: ((force?: boolean) => void) | undefined; renderNow?: ((force?: boolean) => void) | undefined };
+  tui?: {
+    requestRender?: ((force?: boolean) => void) | undefined;
+    renderNow?: ((force?: boolean) => void) | undefined;
+  };
   /** Resolves the configured `tui.editor.cursorUp` / `tui.editor.cursorDown` bindings. */
   keybindings?: Pick<KeybindingsManager, "matches">;
   /** Visible detail rows; defaults to TASK_VIEWER_PAGE_SIZE. */
   pageSize?: number;
-  /** Glyph characters for row labels; defaults to the centralized config. */
+  /** Display config (assignment row); defaults to the centralized config. */
   config?: PiTasksConfig;
 }
 
@@ -117,18 +150,28 @@ export type TasksViewer = {
  * `tui.editor.cursorUp` / `tui.editor.cursorDown` bindings (detail scroll
  * resets); PageUp/PageDown scrolls the detail pane; Escape or Ctrl+C closes.
  */
-export function createTasksViewer(tasks: Task[], options: TasksViewerOptions): TasksViewer {
+export function createTasksViewer(
+  tasks: Task[],
+  options: TasksViewerOptions,
+): TasksViewer {
   const snapshot = [...tasks].sort((a, b) => a.id - b.id);
   const config = options.config ?? DEFAULT_CONFIG;
   const pageSize =
-    typeof options.pageSize === "number" && Number.isFinite(options.pageSize) && options.pageSize > 0
+    typeof options.pageSize === "number" &&
+    Number.isFinite(options.pageSize) &&
+    options.pageSize > 0
       ? Math.floor(options.pageSize)
       : TASK_VIEWER_PAGE_SIZE;
   let selected = 0;
   let detailOffset = 0;
 
   const detailLines = (): string[] =>
-    snapshot.length === 0 ? [] : buildTaskDetailLines(snapshot[Math.min(selected, snapshot.length - 1)], config);
+    snapshot.length === 0
+      ? []
+      : buildTaskDetailLines(
+          snapshot[Math.min(selected, snapshot.length - 1)],
+          config,
+        );
 
   function maxOffset(): number {
     return Math.max(0, detailLines().length - pageSize);
@@ -136,8 +179,10 @@ export function createTasksViewer(tasks: Task[], options: TasksViewerOptions): T
 
   function redraw(): void {
     try {
-      if (typeof options.tui?.requestRender === "function") options.tui.requestRender();
-      else if (typeof options.tui?.renderNow === "function") options.tui.renderNow();
+      if (typeof options.tui?.requestRender === "function")
+        options.tui.requestRender();
+      else if (typeof options.tui?.renderNow === "function")
+        options.tui.renderNow();
     } catch {
       // Redraws are best-effort in tests and teardown.
     }
@@ -161,18 +206,34 @@ export function createTasksViewer(tasks: Task[], options: TasksViewerOptions): T
       const innerWidth = Math.max(0, width - 2);
       const lines: string[] = [];
       if (snapshot.length === 0) {
-        return addBorder([fit(header(), innerWidth), fit("No tasks.", innerWidth), fit(HINT, innerWidth)], width, options.theme);
+        return addBorder(
+          [
+            fit(header(), innerWidth),
+            fit("No tasks.", innerWidth),
+            fit(HINT, innerWidth),
+          ],
+          width,
+          options.theme,
+        );
       }
       const selectedTask = snapshot[Math.min(selected, snapshot.length - 1)];
       const allDetail = buildTaskDetailLines(selectedTask, config);
-      const offset = Math.min(detailOffset, Math.max(0, allDetail.length - pageSize));
+      const offset = Math.min(
+        detailOffset,
+        Math.max(0, allDetail.length - pageSize),
+      );
       const visibleDetail = allDetail.slice(offset, offset + pageSize);
 
       // Narrow terminals stack list above details instead of squeezing columns.
       if (innerWidth < 40) {
         lines.push(fit(header(), innerWidth));
         snapshot.forEach((task, index) => {
-          lines.push(fit(`${index === selected ? "> " : "  "}${taskRowLabel(task, config, snapshot)}`, innerWidth));
+          lines.push(
+            fit(
+              `${index === selected ? "> " : "  "}${taskRowLabel(task, snapshot)}`,
+              innerWidth,
+            ),
+          );
         });
         lines.push(fit("—", innerWidth));
         for (const line of visibleDetail) lines.push(fit(line, innerWidth));
@@ -185,9 +246,13 @@ export function createTasksViewer(tasks: Task[], options: TasksViewerOptions): T
       lines.push(fit(header(), innerWidth));
       const rowCount = Math.max(snapshot.length, visibleDetail.length);
       for (let i = 0; i < rowCount; i++) {
-        const leftRaw = i < snapshot.length ? `${i === selected ? "> " : "  "}${taskRowLabel(snapshot[i], config, snapshot)}` : "";
+        const leftRaw =
+          i < snapshot.length
+            ? `${i === selected ? "> " : "  "}${taskRowLabel(snapshot[i], snapshot)}`
+            : "";
         const leftFit = fit(leftRaw, leftW);
-        const leftPadded = leftFit + " ".repeat(Math.max(0, leftW - visibleWidth(leftFit)));
+        const leftPadded =
+          leftFit + " ".repeat(Math.max(0, leftW - visibleWidth(leftFit)));
         const rightFit = rightW > 0 ? fit(visibleDetail[i] ?? "", rightW) : "";
         lines.push(rightW > 0 ? `${leftPadded} │ ${rightFit}` : leftPadded);
       }
@@ -195,18 +260,31 @@ export function createTasksViewer(tasks: Task[], options: TasksViewerOptions): T
       return addBorder(lines, width, options.theme);
     },
     handleInput(data: string) {
-      if (data === "\x1b" || data === "\x03" || isKey(data, "escape") || isKey(data, "ctrl+c")) {
+      if (
+        data === "\x1b" ||
+        data === "\x03" ||
+        isKey(data, "escape") ||
+        isKey(data, "ctrl+c")
+      ) {
         options.done();
         return;
       }
       if (snapshot.length === 0) return;
-      if (data === "\x1b[A" || isKey(data, "up") || matchesBinding(options.keybindings, data, "tui.editor.cursorUp")) {
+      if (
+        data === "\x1b[A" ||
+        isKey(data, "up") ||
+        matchesBinding(options.keybindings, data, "tui.editor.cursorUp")
+      ) {
         selected = (selected - 1 + snapshot.length) % snapshot.length;
         detailOffset = 0;
         redraw();
         return;
       }
-      if (data === "\x1b[B" || isKey(data, "down") || matchesBinding(options.keybindings, data, "tui.editor.cursorDown")) {
+      if (
+        data === "\x1b[B" ||
+        isKey(data, "down") ||
+        matchesBinding(options.keybindings, data, "tui.editor.cursorDown")
+      ) {
         selected = (selected + 1) % snapshot.length;
         detailOffset = 0;
         redraw();

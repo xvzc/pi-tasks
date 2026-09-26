@@ -21,7 +21,7 @@ raw JSON payloads untouched.
   human-oriented tool rendering hide assignee and reserve no assignee
   column or width.
 - R5: When `true`, current behavior is preserved: `create assignee?:
-  string`, `update assignee?: string|null`, prompt guidance (owners wording
+string`, `update assignee?: string|null`, prompt guidance (owners wording
   plus Assignment section), and widget/viewer/tool-rendering display and
   alignment.
 - R6: The Assignment prompt (enabled only) is concise: use `assignee` only

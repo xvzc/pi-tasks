@@ -13,7 +13,9 @@ let hadAgentDir = false;
 beforeEach(async () => {
   hadAgentDir = "PI_CODING_AGENT_DIR" in process.env;
   savedAgentDir = process.env.PI_CODING_AGENT_DIR;
-  const agentDir = await mkdtemp(join(tmpdir(), "pi-task-session-start-agent-"));
+  const agentDir = await mkdtemp(
+    join(tmpdir(), "pi-task-session-start-agent-"),
+  );
   dirs.push(agentDir);
   process.env.PI_CODING_AGENT_DIR = agentDir;
 });
@@ -21,17 +23,24 @@ beforeEach(async () => {
 afterEach(async () => {
   if (hadAgentDir) process.env.PI_CODING_AGENT_DIR = savedAgentDir as string;
   else delete process.env.PI_CODING_AGENT_DIR;
-  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(
+    dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+  );
 });
 
 interface Captured {
   tools: Map<string, any>;
-  sessionStart: ((event: unknown, ctx: any) => Promise<void> | void) | undefined;
+  sessionStart:
+    ((event: unknown, ctx: any) => Promise<void> | void) | undefined;
   turnStart: ((event: unknown, ctx: any) => Promise<void> | void) | undefined;
 }
 
 function capture(): Captured & { pi: any } {
-  const captured: Captured = { tools: new Map(), sessionStart: undefined, turnStart: undefined };
+  const captured: Captured = {
+    tools: new Map(),
+    sessionStart: undefined,
+    turnStart: undefined,
+  };
   const pi = {
     on: (event: string, handler: any) => {
       if (event === "session_start") captured.sessionStart = handler;
@@ -40,19 +49,23 @@ function capture(): Captured & { pi: any } {
     registerTool: (tool: any) => {
       captured.tools.set(tool.name, tool);
     },
-    registerCommand: (_name: string, _command: unknown) => {} };
+    registerCommand: (_name: string, _command: unknown) => {},
+  };
   return Object.assign(captured, { pi });
 }
 
 function sessionCtx(cwd: string, sessionId: string) {
-  const widgets: Array<{ key: string; content: unknown; options?: unknown }> = [];
+  const widgets: Array<{ key: string; content: unknown; options?: unknown }> =
+    [];
   const ctx = {
     cwd,
     sessionManager: { getSessionId: () => sessionId },
     ui: {
       setWidget: (key: string, content: unknown, options?: unknown) => {
         widgets.push({ key, content, options });
-      } } };
+      },
+    },
+  };
   return { ctx, widgets };
 }
 
@@ -62,29 +75,60 @@ async function freshCwd(): Promise<string> {
   return dir;
 }
 
-async function seedTask(cwd: string, sessionId: string, subject = "restored"): Promise<void> {
+async function seedTask(
+  cwd: string,
+  sessionId: string,
+  subject = "restored",
+): Promise<void> {
   const { tools, pi } = capture();
   registerExtension(pi);
   const { ctx } = sessionCtx(cwd, sessionId);
   const created = await tools
     .get("task_create")
-    .execute("seed", { tasks: [{ subject, description: "" }] }, undefined, undefined, ctx);
+    .execute(
+      "seed",
+      { tasks: [{ subject, description: "" }] },
+      undefined,
+      undefined,
+      ctx,
+    );
   expect(created.isError).toBeUndefined();
 }
 
-async function seedCompletedTask(cwd: string, sessionId: string): Promise<void> {
+async function seedCompletedTask(
+  cwd: string,
+  sessionId: string,
+): Promise<void> {
   const { tools, pi } = capture();
   registerExtension(pi);
   const { ctx } = sessionCtx(cwd, sessionId);
   await tools
     .get("task_create")
-    .execute("seed-create", { tasks: [{ subject: "completed", description: "" }] }, undefined, undefined, ctx);
+    .execute(
+      "seed-create",
+      { tasks: [{ subject: "completed", description: "" }] },
+      undefined,
+      undefined,
+      ctx,
+    );
   await tools
     .get("task_update")
-    .execute("seed-start", { updates: [{ id: 1, status: "in_progress", appendLog: "start" }] }, undefined, undefined, ctx);
+    .execute(
+      "seed-start",
+      { updates: [{ id: 1, status: "in_progress", appendLog: "start" }] },
+      undefined,
+      undefined,
+      ctx,
+    );
   const updated = await tools
     .get("task_update")
-    .execute("seed-complete", { updates: [{ id: 1, status: "completed", appendLog: "done" }] }, undefined, undefined, ctx);
+    .execute(
+      "seed-complete",
+      { updates: [{ id: 1, status: "completed", appendLog: "done" }] },
+      undefined,
+      undefined,
+      ctx,
+    );
   expect(updated.isError).toBeUndefined();
 }
 
@@ -125,16 +169,26 @@ describe("session_start widget restoration", () => {
     await seedCompletedTask(cwd, sessionId);
 
     const { ctx, widgets } = sessionCtx(cwd, sessionId);
-    await captured.sessionStart?.({ type: "session_start", reason: "resume" }, ctx);
+    await captured.sessionStart?.(
+      { type: "session_start", reason: "resume" },
+      ctx,
+    );
     expect(typeof widgets.at(-1)?.content).toBe("function");
 
     await captured.turnStart?.({ type: "turn_start" }, ctx);
     expect(widgets.at(-1)).toMatchObject({ key: "tasks", content: undefined });
-    const listed = await captured.tools.get("task_list").execute("list", {}, undefined, undefined, ctx);
+    const listed = await captured.tools
+      .get("task_list")
+      .execute("list", {}, undefined, undefined, ctx);
     expect(JSON.parse(listed.content[0].text)).toEqual([]);
-    expect(JSON.parse(await readFile(taskFilePath(cwd, sessionId), "utf8"))).toMatchObject({
+    expect(
+      JSON.parse(await readFile(taskFilePath(cwd, sessionId), "utf8")),
+    ).toMatchObject({
       version: 2,
-      history: [{ tasks: [{ id: 1, subject: "completed", status: "completed", }] }] });
+      history: [
+        { tasks: [{ id: 1, subject: "completed", status: "completed" }] },
+      ],
+    });
   });
 
   it("clears the widget for an empty/new session", async () => {
@@ -143,7 +197,10 @@ describe("session_start widget restoration", () => {
     const cwd = await freshCwd();
 
     const { ctx, widgets } = sessionCtx(cwd, "brand-new-session");
-    await captured.sessionStart?.({ type: "session_start", reason: "new" }, ctx);
+    await captured.sessionStart?.(
+      { type: "session_start", reason: "new" },
+      ctx,
+    );
 
     expect(widgets.length).toBeGreaterThan(0);
     const last = widgets[widgets.length - 1];
@@ -159,7 +216,10 @@ describe("session_start widget restoration", () => {
     await seedTask(cwd, "session-a");
 
     const { ctx, widgets } = sessionCtx(cwd, "session-b");
-    await captured.sessionStart?.({ type: "session_start", reason: "resume" }, ctx);
+    await captured.sessionStart?.(
+      { type: "session_start", reason: "resume" },
+      ctx,
+    );
 
     const last = widgets[widgets.length - 1];
     expect(last.key).toBe("tasks");
@@ -174,11 +234,18 @@ describe("session_start widget restoration", () => {
       registerExtension(captured.pi);
       const cwd = await freshCwd();
       await seedTask(cwd, "parent-session");
-      const beforeDisk = await readFile(taskFilePath(cwd, "parent-session"), "utf8");
+      const beforeDisk = await readFile(
+        taskFilePath(cwd, "parent-session"),
+        "utf8",
+      );
 
       const { ctx, widgets } = sessionCtx(cwd, "child-session");
       await captured.sessionStart?.(
-        { type: "session_start", reason, previousSessionFile: "parent-session.json" },
+        {
+          type: "session_start",
+          reason,
+          previousSessionFile: "parent-session.json",
+        },
         ctx,
       );
 
@@ -186,7 +253,9 @@ describe("session_start widget restoration", () => {
       expect(last.key).toBe("tasks");
       expect(last.content).toBeUndefined();
       expect(existsSync(taskFilePath(cwd, "child-session"))).toBe(false);
-      expect(await readFile(taskFilePath(cwd, "parent-session"), "utf8")).toBe(beforeDisk);
+      expect(await readFile(taskFilePath(cwd, "parent-session"), "utf8")).toBe(
+        beforeDisk,
+      );
     },
   );
 
@@ -214,7 +283,10 @@ describe("session_start widget restoration", () => {
     await seedTask(cwd, sessionId);
 
     const { ctx, widgets } = sessionCtx(cwd, sessionId);
-    await captured.sessionStart?.({ type: "session_start", reason: "resume" }, ctx);
+    await captured.sessionStart?.(
+      { type: "session_start", reason: "resume" },
+      ctx,
+    );
     await captured.turnStart?.({ type: "turn_start" }, ctx);
     await captured.turnStart?.({ type: "turn_start" }, ctx);
 
@@ -236,7 +308,9 @@ describe("session_start widget restoration", () => {
     await expect(
       captured.sessionStart?.({ type: "session_start", reason: "reload" }, ctx),
     ).resolves.toBeUndefined();
-    await expect(captured.turnStart?.({ type: "turn_start" }, ctx)).resolves.toBeUndefined();
+    await expect(
+      captured.turnStart?.({ type: "turn_start" }, ctx),
+    ).resolves.toBeUndefined();
 
     expect(widgets).toEqual([]);
     expect(await readFile(path, "utf8")).toBe("not valid json{{{");

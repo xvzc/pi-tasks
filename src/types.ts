@@ -1,6 +1,7 @@
 /** Shared task model and persisted store envelope. */
 
-export type TaskStatus = "pending" | "in_progress" | "paused" | "completed" | "deleted";
+export type TaskStatus =
+  "pending" | "in_progress" | "paused" | "completed" | "deleted";
 
 export interface TaskLogEntry {
   /** ISO 8601 UTC timestamp added by the store. */
@@ -9,13 +10,16 @@ export interface TaskLogEntry {
   message: string;
 }
 
+export type Assignment =
+  { delegate: false; owner: null } | { delegate: true; owner: string };
+
 export interface Task {
   /** Numeric, positive, monotonically allocated within a store. Never reused. */
   id: number;
   subject: string;
   description: string;
-  /** Assigned agent type shown as `@assignee` in the widget. */
-  assignee?: string;
+  /** Planning-only execution assignment. It never dispatches or authorizes work. */
+  assignment?: Assignment;
   status: TaskStatus;
   /** Number of entries into `in_progress`. Starts at 0, increments on every non-`in_progress` -> `in_progress` (including `paused` resumes and `completed` rework). */
   attempt: number;
@@ -62,10 +66,22 @@ export interface StoreData {
   activeSince?: string;
 }
 
-export const TASK_STATUSES: TaskStatus[] = ["pending", "in_progress", "paused", "completed", "deleted"];
+export const TASK_STATUSES: TaskStatus[] = [
+  "pending",
+  "in_progress",
+  "paused",
+  "completed",
+  "deleted",
+];
 
 export function isTaskStatus(value: unknown): value is TaskStatus {
-  return value === "pending" || value === "in_progress" || value === "paused" || value === "completed" || value === "deleted";
+  return (
+    value === "pending" ||
+    value === "in_progress" ||
+    value === "paused" ||
+    value === "completed" ||
+    value === "deleted"
+  );
 }
 
 /**

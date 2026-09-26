@@ -3,13 +3,13 @@
  * never reads or writes the store and never changes lifecycle/model semantics.
  *
  * Each line shows the numeric ID with its remaining-attempts indicator
- * (`↻N`, omitted for unlimited tasks), the optional `@assignee` (only when
- * `enableAssignee` is true), and the subject. Shorter
+ * (`↻N`, omitted for unlimited tasks), the optional assignment (only when
+ * `enableAssignment` is true), and the subject. Shorter
  * `#<id>` labels are right-padded to the widest ID in the rendered set so the
- * `↻N` column starts at a consistent position. Shorter `↻N` and `@assignee`
+ * `↻N` column starts at a consistent position. Shorter `↻N` and assignment
  * labels are right-padded to the widest corresponding label in the set so the
- * following columns start consistently; tasks without an assignee reserve the
- * assignee width only when at least one displayed task has an assignee, and unlimited tasks
+ * following columns start consistently; tasks without an assignment reserve the
+ * assignment width only when at least one displayed task has an assignment, and unlimited tasks
  * reserve the remaining-attempts width only when at least one finite task is present. `in_progress` lines append the
  * running per-attempt duration measured from `startedAt` to the supplied
  * current time (`Date.now()` by default; pass an explicit `nowMs` for
@@ -20,30 +20,28 @@
  * `in_progress`. `paused` and `deleted` lines append the frozen attempt
  * duration like `completed` lines and never blink; deleted plain rows append
  * `[deleted]`.
- * The header always shows `● Tasks · N total · M done` (including `0 done`), plus
+ * The header always shows `❯ Tasks · N total · M done` (including `0 done`), plus
  * nonzero ` · P paused` and ` · D deleted` segments.
  * It appends the global accumulated active (wall-clock union)
  * time only after a task has entered `in_progress`; the themed header renders
- * the accent title (`●` plus bold `Tasks`) followed by a single dim stats tail
+ * the accent title (`❯` plus bold `Tasks`) followed by a single dim stats tail
  * (` · N total · M done`, plus status counts and ` · <duration>` when present).
- * Status and review state select the configured glyph; in-progress tasks use
- * configured animation frames. Glyph colors are fixed and derived from status (plus the attempt count for
+ * Status and review state select the fixed built-in glyph; in-progress tasks use
+ * fixed animation frames. Glyph colors are fixed and derived from status (plus the attempt count for
  * pending): fresh pending (`attempt` 0) renders dim/gray, retried pending
  * (`attempt` > 0) renders yellow/warning, `in_progress` and `completed` render
  * green/success, `paused` renders yellow/warning, and `deleted` renders dim/gray.
- * Subject and assignee styling is fixed as well: pending and paused use the
+ * Subject and assignment styling is fixed as well: pending and paused use the
  * default text color, `in_progress` uses default text color bold, `completed`
  * uses dim styling without strikethrough, and `deleted` uses dim strikethrough.
- * The optional `@assignee` always uses the same color, weight, and
+ * The optional assignment always uses the same color, weight, and
  * decoration as the subject. Elapsed/finished duration text renders dim/gray
  * in themed lines and is appended plain after the subject in the text fallback.
- * In-progress glyphs animate every 250 ms; legacy custom characters retain a same-width blink.
+ * In-progress glyphs animate every 250 ms through the fixed frames.
  *
- * Migration: tasks and configs written before per-task/configurable colors
- * were removed may still contain a task `color` or a glyph `defaultColor`.
- * Persisted `color` fields are ignored on load and omitted on write; config
- * `defaultColor` values are ignored (reported as unknown keys); legacy
- * `character` values and the new review/frame fields are honored.
+ * Migration: tasks written before per-task colors were removed may still
+ * contain a task `color`. Persisted `color` fields are ignored on load and
+ * omitted on write.
  */
 
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
@@ -57,40 +55,56 @@ export type ThemeLike = {
   strikethrough(text: string): string;
 };
 
-function inProgressFrames(config: PiTasksConfig): string[] {
-  return config.glyphs.inProgress.frames;
+/**
+ * Fixed built-in presentation glyphs. These are intentionally not part of
+ * the user config: rendering always uses these values.
+ */
+const GLYPHS = {
+  inProgressFrames: ["◌", "○", "⨀", "◉", "●", "◉", "⨀", "○", "◌"],
+  pending: "◌",
+  pendingRetried: "■",
+  completed: "●",
+  completedAwaitingReview: "○",
+  paused: "⏸",
+  deleted: "⌫",
+} as const;
+
+function inProgressFrames(): string[] {
+  return [...GLYPHS.inProgressFrames];
 }
 
 /** Resolve the presentation glyph with review state and animation context. */
 export function statusGlyphFor(
   task: Task,
   tasks: readonly Task[] = [task],
-  config: PiTasksConfig = DEFAULT_CONFIG,
   frame = 0,
 ): string {
   if (task.status === "in_progress") {
-    const frames = inProgressFrames(config);
+    const frames = GLYPHS.inProgressFrames;
     return frames[((frame % frames.length) + frames.length) % frames.length];
   }
   if (task.status === "completed") {
     const reviewer = reviewerFor(tasks, task.id);
     return reviewer !== undefined && reviewer.status !== "completed"
-      ? config.glyphs.completed.awaitingReviewCharacter
-      : config.glyphs.completed.character;
+      ? GLYPHS.completedAwaitingReview
+      : GLYPHS.completed;
   }
-  if (task.status === "paused") return config.glyphs.paused.character;
-  if (task.status === "deleted") return config.glyphs.deleted.character;
-  return task.attempt > 0 ? config.glyphs.pending.retriedCharacter : config.glyphs.pending.character;
+  if (task.status === "paused") return GLYPHS.paused;
+  if (task.status === "deleted") return GLYPHS.deleted;
+  return task.attempt > 0 ? GLYPHS.pendingRetried : GLYPHS.pending;
 }
 
 /** Static glyph character for a task. In-progress tasks use their first frame. */
-export function statusGlyph(task: Task, config: PiTasksConfig = DEFAULT_CONFIG): string {
-  return statusGlyphFor(task, [task], config);
+export function statusGlyph(
+  task: Task,
+  tasks: readonly Task[] = [task],
+): string {
+  return statusGlyphFor(task, tasks);
 }
 
-/** Blank matching the glyph's visible width for legacy custom in-progress blink. */
-export function blankGlyph(task: Task, config: PiTasksConfig = DEFAULT_CONFIG): string {
-  return " ".repeat(Math.max(1, visibleWidth(statusGlyph(task, config))));
+/** Blank matching the glyph's visible width for the in-progress blink-off frame. */
+export function blankGlyph(task: Task): string {
+  return " ".repeat(Math.max(1, visibleWidth(statusGlyph(task))));
 }
 
 /**
@@ -138,7 +152,10 @@ function formatSecDuration(diffSec: number): string {
  * duration yields an empty string. Kept for task-age compatibility; the
  * widget itself measures attempts from `startedAt` and frozen `tookMs`.
  */
-export function formatElapsedDuration(createdAt: string, nowMs: number = Date.now()): string {
+export function formatElapsedDuration(
+  createdAt: string,
+  nowMs: number = Date.now(),
+): string {
   const createdMs = Date.parse(createdAt);
   return formatSecDuration(Math.floor((nowMs - createdMs) / 1000));
 }
@@ -162,13 +179,16 @@ function attemptElapsedMs(task: Task, nowMs: number): number {
 }
 
 function tookDisplay(task: Task): string {
-  if (task.tookMs !== undefined) return formatMillisDuration(task.tookMs) || "0s";
+  if (task.tookMs !== undefined)
+    return formatMillisDuration(task.tookMs) || "0s";
   // Legacy completed task without a frozen duration: freeze the
   // pre-upgrade age span so reloads neither reset it nor let it grow.
   const endMs = Date.parse(task.updatedAt);
   const startMs = Date.parse(task.createdAt);
   if (!Number.isFinite(endMs) || !Number.isFinite(startMs)) return "0s";
-  return formatSecDuration(Math.floor(Math.max(0, endMs - startMs) / 1000)) || "0s";
+  return (
+    formatSecDuration(Math.floor(Math.max(0, endMs - startMs) / 1000)) || "0s"
+  );
 }
 
 function durationSuffix(task: Task, nowMs: number): string {
@@ -176,7 +196,11 @@ function durationSuffix(task: Task, nowMs: number): string {
     const elapsed = formatMillisDuration(attemptElapsedMs(task, nowMs)) || "0s";
     return ` ${elapsed}`;
   }
-  if (task.status === "completed" || task.status === "paused" || task.status === "deleted") {
+  if (
+    task.status === "completed" ||
+    task.status === "paused" ||
+    task.status === "deleted"
+  ) {
     return ` ${tookDisplay(task)}`;
   }
   return "";
@@ -185,13 +209,18 @@ function durationSuffix(task: Task, nowMs: number): string {
 /** Pending-only effective-prerequisite suffix appended after the subject. */
 export function blockedBySuffix(task: Task): string {
   const prerequisites = effectivePrereqs(task);
-  return (task.status === "pending" || task.status === "paused") && prerequisites.length > 0
+  return (task.status === "pending" || task.status === "paused") &&
+    prerequisites.length > 0
     ? ` → (${prerequisites.join(", ")})`
     : "";
 }
 
 /** Resolve the header total: finished union time plus the running slice (if any). Zero renders as `0s`. */
-export function formatActiveTotal(timing: ActiveTiming | undefined, tasks: Task[], nowMs: number): string {
+export function formatActiveTotal(
+  timing: ActiveTiming | undefined,
+  tasks: Task[],
+  nowMs: number,
+): string {
   const base = timing?.totalActiveMs ?? 0;
   let bonus = 0;
   if (timing?.activeSince !== undefined) {
@@ -204,7 +233,9 @@ export function formatActiveTotal(timing: ActiveTiming | undefined, tasks: Task[
     for (const task of tasks) {
       if (task.status !== "in_progress") continue;
       const startMs = Date.parse(task.startedAt ?? task.createdAt);
-      if (Number.isFinite(startMs)) earliest = earliest === undefined ? startMs : Math.min(earliest, startMs);
+      if (Number.isFinite(startMs))
+        earliest =
+          earliest === undefined ? startMs : Math.min(earliest, startMs);
     }
     if (earliest !== undefined) bonus = Math.max(0, nowMs - earliest);
   }
@@ -228,35 +259,62 @@ export function retryColumnWidth(tasks: Task[]): number {
   return width;
 }
 
-/** Visible width of the widest `@assignee` label in the set (without its leading separator). Returns 0 when assignee display is disabled (`enableAssignee` false) or when no task has an assignee. */
-export function assigneeColumnWidth(tasks: Task[], config: PiTasksConfig = DEFAULT_CONFIG): number {
-  if (!config.enableAssignee) return 0;
+/** Visible width of the widest assignment label in the set (without its leading separator). Returns 0 when assignment display is disabled (`enableAssignment` false) or when no task has an assignment. */
+export function assignmentLabel(task: Task): string {
+  if (task.assignment === undefined) return "";
+  return task.assignment.delegate ? `@${task.assignment.owner}` : "@self";
+}
+
+export function assignmentColumnWidth(
+  tasks: Task[],
+  config: PiTasksConfig = DEFAULT_CONFIG,
+): number {
+  if (!config.enableAssignment) return 0;
   let width = 0;
-  for (const task of tasks) {
-    if (task.assignee !== undefined) width = Math.max(width, visibleWidth(`@${task.assignee}`));
-  }
+  for (const task of tasks)
+    width = Math.max(width, visibleWidth(assignmentLabel(task)));
   return width;
 }
 
-function assigneeField(task: Task, width?: number): string {
-  const label = task.assignee === undefined ? "" : `@${task.assignee}`;
-  const fieldWidth = Math.max(visibleWidth(label), typeof width === "number" && width > 0 ? width : 0);
+function assignmentField(task: Task, width?: number): string {
+  const label = assignmentLabel(task);
+  const fieldWidth = Math.max(
+    visibleWidth(label),
+    typeof width === "number" && width > 0 ? width : 0,
+  );
   if (fieldWidth === 0) return "";
   return `${label}${" ".repeat(Math.max(0, fieldWidth - visibleWidth(label)))}`;
 }
 
-/** Plain-text line: `#<id> ↻N @assignee subject`, a pending-only ` → (<blockedBy>)` suffix, and status-specific duration. No colors. The `↻N` indicator is omitted for unlimited tasks (`maxAttempts` 0). Pass collection widths to right-pad shorter ID, remaining-attempts, or assignee labels; all are omitted by default to preserve standalone output. Positive remaining-attempts and assignee widths reserve their columns for tasks without those labels. */
-export function formatTaskLine(task: Task, nowMs: number = Date.now(), config: PiTasksConfig = DEFAULT_CONFIG, idWidth?: number, retryWidth?: number, assigneeWidth?: number, tasks: readonly Task[] = [task]): string {
-  const idLabel = typeof idWidth === "number" && idWidth > 0 ? `#${task.id}`.padEnd(idWidth) : `#${task.id}`;
+/** Plain-text line: `#<id> ↻N assignment subject`, a pending-only ` → (<blockedBy>)` suffix, and status-specific duration. No colors. The `↻N` indicator is omitted for unlimited tasks (`maxAttempts` 0). Pass collection widths to right-pad shorter ID, remaining-attempts, or assignment labels; all are omitted by default to preserve standalone output. Positive remaining-attempts and assignment widths reserve their columns for tasks without those labels. */
+export function formatTaskLine(
+  task: Task,
+  nowMs: number = Date.now(),
+  config: PiTasksConfig = DEFAULT_CONFIG,
+  idWidth?: number,
+  retryWidth?: number,
+  assignmentWidth?: number,
+  tasks: readonly Task[] = [task],
+): string {
+  const idLabel =
+    typeof idWidth === "number" && idWidth > 0
+      ? `#${task.id}`.padEnd(idWidth)
+      : `#${task.id}`;
   let retryPart = remainingRetries(task);
   if (typeof retryWidth === "number" && retryWidth > 0) {
     const label = retryPart.trim();
-    retryPart = label === "" ? ` ${" ".repeat(retryWidth)}` : ` ${label.padEnd(retryWidth)}`;
+    retryPart =
+      label === ""
+        ? ` ${" ".repeat(retryWidth)}`
+        : ` ${label.padEnd(retryWidth)}`;
   }
-  const assignee = !config.enableAssignee ? "" : assigneeField(task, assigneeWidth);
-  const assigneePart = assignee === "" ? "" : ` ${assignee}`;
-  const subject = task.status === "deleted" ? `${task.subject} [deleted]` : task.subject;
-  return `  ${statusGlyphFor(task, tasks, config)} ${idLabel}${retryPart}${assigneePart} ${subject}${blockedBySuffix(task)}${durationSuffix(task, nowMs)}`;
+  const assignment = !config.enableAssignment
+    ? ""
+    : assignmentField(task, assignmentWidth);
+  const assignmentPart = assignment === "" ? "" : ` ${assignment}`;
+  const subject =
+    task.status === "deleted" ? `${task.subject} [deleted]` : task.subject;
+  return `  ${statusGlyphFor(task, tasks)} ${idLabel}${retryPart}${assignmentPart} ${subject}${blockedBySuffix(task)}${durationSuffix(task, nowMs)}`;
 }
 
 interface HeaderParts {
@@ -268,7 +326,11 @@ interface HeaderParts {
   activeTotal?: string;
 }
 
-function buildHeaderParts(tasks: Task[], nowMs: number, timing?: ActiveTiming): HeaderParts {
+function buildHeaderParts(
+  tasks: Task[],
+  nowMs: number,
+  timing?: ActiveTiming,
+): HeaderParts {
   const done = tasks.filter((task) => task.status === "completed").length;
   const paused = tasks.filter((task) => task.status === "paused").length;
   const deleted = tasks.filter((task) => task.status === "deleted").length;
@@ -276,24 +338,52 @@ function buildHeaderParts(tasks: Task[], nowMs: number, timing?: ActiveTiming): 
   const doneSegment = `${done} done`;
   const pausedSegment = paused > 0 ? `${paused} paused` : undefined;
   const deletedSegment = deleted > 0 ? `${deleted} deleted` : undefined;
-  let base = `● Tasks · ${totalSegment} · ${doneSegment}`;
+  let base = `❯ Tasks · ${totalSegment} · ${doneSegment}`;
   if (pausedSegment !== undefined) base += ` · ${pausedSegment}`;
   if (deletedSegment !== undefined) base += ` · ${deletedSegment}`;
-  const hasStarted = tasks.some((task) => task.attempt > 0 || task.status === "in_progress");
-  const parts = { base, totalSegment, doneSegment, pausedSegment, deletedSegment };
-  return hasStarted ? { ...parts, activeTotal: formatActiveTotal(timing, tasks, nowMs) } : parts;
+  const hasStarted = tasks.some(
+    (task) => task.attempt > 0 || task.status === "in_progress",
+  );
+  const parts = {
+    base,
+    totalSegment,
+    doneSegment,
+    pausedSegment,
+    deletedSegment,
+  };
+  return hasStarted
+    ? { ...parts, activeTotal: formatActiveTotal(timing, tasks, nowMs) }
+    : parts;
 }
 
 /** Plain-text widget lines. Empty list yields no lines. `nowMs` fixes the elapsed clock for deterministic rendering; `timing` supplies the global union time. */
-export function buildWidgetLines(tasks: Task[], nowMs: number = Date.now(), timing?: ActiveTiming, config: PiTasksConfig = DEFAULT_CONFIG): string[] {
+export function buildWidgetLines(
+  tasks: Task[],
+  nowMs: number = Date.now(),
+  timing?: ActiveTiming,
+  config: PiTasksConfig = DEFAULT_CONFIG,
+): string[] {
   if (tasks.length === 0) return [];
   const sorted = [...tasks].sort((a, b) => a.id - b.id);
   const { base, activeTotal } = buildHeaderParts(sorted, nowMs, timing);
   const header = activeTotal === undefined ? base : `${base} · ${activeTotal}`;
   const idWidth = idColumnWidth(sorted);
   const retryWidth = retryColumnWidth(sorted);
-  const assigneeWidth = assigneeColumnWidth(sorted, config);
-  return [header, ...sorted.map((task) => formatTaskLine(task, nowMs, config, idWidth, retryWidth, assigneeWidth, sorted))];
+  const assignmentWidth = assignmentColumnWidth(sorted, config);
+  return [
+    header,
+    ...sorted.map((task) =>
+      formatTaskLine(
+        task,
+        nowMs,
+        config,
+        idWidth,
+        retryWidth,
+        assignmentWidth,
+        sorted,
+      ),
+    ),
+  ];
 }
 
 /**
@@ -302,7 +392,8 @@ export function buildWidgetLines(tasks: Task[], nowMs: number = Date.now(), timi
  * at least once render yellow/warning so retries stay visible across reloads.
  */
 export function glyphThemeColor(task: Task): string {
-  if (task.status === "in_progress" || task.status === "completed") return "success";
+  if (task.status === "in_progress" || task.status === "completed")
+    return "success";
   if (task.status === "paused") return "warning";
   if (task.status === "deleted") return "dim";
   return task.attempt > 0 ? "warning" : "dim";
@@ -310,7 +401,8 @@ export function glyphThemeColor(task: Task): string {
 
 /** Truncate every line to `width` visible columns. Non-positive widths pass through. */
 function fitLinesToWidth(lines: string[], width: number | undefined): string[] {
-  if (width === undefined || !Number.isFinite(width) || width <= 0) return lines;
+  if (width === undefined || !Number.isFinite(width) || width <= 0)
+    return lines;
   return lines.map((line) => truncateToWidth(line, width));
 }
 
@@ -318,18 +410,32 @@ function fitLinesToWidth(lines: string[], width: number | undefined): string[] {
  * Themed widget lines. Falls back to plain lines if the theme rejects a color.
  * When `width` is a positive finite number, every emitted line is truncated to
  * fit that many visible columns (ANSI-aware, colors preserved). A numeric
- * `inProgressFrame` selects the animation frame; `false` retains the legacy
- * same-width blank behavior. Plain-text lines use the first frame.
+ * `inProgressFrame` selects the animation frame; `false` renders the
+ * same-width blank blink-off frame. Plain-text lines use the first frame.
  * `nowMs` fixes the elapsed clock for deterministic rendering. Elapsed text
  * always renders dim; the plain fallback already includes it.
  */
-export function renderWidgetLines(tasks: Task[], theme: ThemeLike, width?: number, inProgressFrame: boolean | number = true, nowMs: number = Date.now(), timing?: ActiveTiming, config: PiTasksConfig = DEFAULT_CONFIG): string[] {
+export function renderWidgetLines(
+  tasks: Task[],
+  theme: ThemeLike,
+  width?: number,
+  inProgressFrame: boolean | number = true,
+  nowMs: number = Date.now(),
+  timing?: ActiveTiming,
+  config: PiTasksConfig = DEFAULT_CONFIG,
+): string[] {
   const plain = buildWidgetLines(tasks, nowMs, timing, config);
   if (plain.length === 0) return plain;
   try {
     const sorted = [...tasks].sort((a, b) => a.id - b.id);
-    const { totalSegment, doneSegment, pausedSegment, deletedSegment, activeTotal } = buildHeaderParts(sorted, nowMs, timing);
-    const title = theme.fg("accent", `● ${theme.bold("Tasks")}`);
+    const {
+      totalSegment,
+      doneSegment,
+      pausedSegment,
+      deletedSegment,
+      activeTotal,
+    } = buildHeaderParts(sorted, nowMs, timing);
+    const title = theme.fg("accent", `❯ ${theme.bold("Tasks")}`);
     let tail = ` · ${totalSegment} · ${doneSegment}`;
     if (pausedSegment !== undefined) tail += ` · ${pausedSegment}`;
     if (deletedSegment !== undefined) tail += ` · ${deletedSegment}`;
@@ -337,42 +443,72 @@ export function renderWidgetLines(tasks: Task[], theme: ThemeLike, width?: numbe
     const themedHeader = `${title}${theme.fg("dim", tail)}`;
     const idWidth = idColumnWidth(sorted);
     const retryWidth = retryColumnWidth(sorted);
-    const assigneeWidth = assigneeColumnWidth(sorted, config);
+    const assignmentWidth = assignmentColumnWidth(sorted, config);
     const lines = [themedHeader];
     const frame = typeof inProgressFrame === "number" ? inProgressFrame : 0;
     for (const task of sorted) {
-      const assigneeText = config.enableAssignee ? assigneeField(task, assigneeWidth) : "";
+      const assignmentText = config.enableAssignment
+        ? assignmentField(task, assignmentWidth)
+        : "";
       const idLabel = `#${task.id}`.padEnd(idWidth);
       let retryPart = remainingRetries(task);
       if (retryWidth > 0) {
         const label = retryPart.trim();
-        retryPart = label === "" ? ` ${" ".repeat(retryWidth)}` : ` ${label.padEnd(retryWidth)}`;
+        retryPart =
+          label === ""
+            ? ` ${" ".repeat(retryWidth)}`
+            : ` ${label.padEnd(retryWidth)}`;
       }
       const idPart = theme.fg("dim", `${idLabel}${retryPart}`);
       const suffix = durationSuffix(task, nowMs);
-      const elapsedSuffix = suffix === "" ? "" : ` ${theme.fg("dim", suffix.trim())}`;
+      const elapsedSuffix =
+        suffix === "" ? "" : ` ${theme.fg("dim", suffix.trim())}`;
       const completedSubject = theme.fg("dim", task.subject);
-      const completedAssignee = assigneeText ? ` ${theme.fg("dim", assigneeText)}` : "";
+      const completedAssignment = assignmentText
+        ? ` ${theme.fg("dim", assignmentText)}`
+        : "";
       if (task.status === "deleted") {
-        const deletedSubject = theme.fg("dim", theme.strikethrough(task.subject));
-        const deletedAssignee = assigneeText ? ` ${theme.fg("dim", theme.strikethrough(assigneeText))}` : "";
-        lines.push(`  ${theme.fg(glyphThemeColor(task), statusGlyphFor(task, sorted, config))} ${idPart}${deletedAssignee} ${deletedSubject}${elapsedSuffix}`);
+        const deletedSubject = theme.fg(
+          "dim",
+          theme.strikethrough(task.subject),
+        );
+        const deletedAssignment = assignmentText
+          ? ` ${theme.fg("dim", theme.strikethrough(assignmentText))}`
+          : "";
+        lines.push(
+          `  ${theme.fg(glyphThemeColor(task), statusGlyphFor(task, sorted))} ${idPart}${deletedAssignment} ${deletedSubject}${elapsedSuffix}`,
+        );
       } else if (task.status === "paused") {
-        const pausedAssignee = assigneeText ? ` ${theme.fg("text", assigneeText)}` : "";
+        const pausedAssignment = assignmentText
+          ? ` ${theme.fg("text", assignmentText)}`
+          : "";
         const pausedSubject = theme.fg("text", task.subject);
-        lines.push(`  ${theme.fg(glyphThemeColor(task), statusGlyphFor(task, sorted, config))} ${idPart}${pausedAssignee} ${pausedSubject}${elapsedSuffix}`);
+        lines.push(
+          `  ${theme.fg(glyphThemeColor(task), statusGlyphFor(task, sorted))} ${idPart}${pausedAssignment} ${pausedSubject}${elapsedSuffix}`,
+        );
       } else if (task.status === "completed") {
-        lines.push(`  ${theme.fg(glyphThemeColor(task), statusGlyphFor(task, sorted, config))} ${idPart}${completedAssignee} ${completedSubject}${elapsedSuffix}`);
+        lines.push(
+          `  ${theme.fg(glyphThemeColor(task), statusGlyphFor(task, sorted))} ${idPart}${completedAssignment} ${completedSubject}${elapsedSuffix}`,
+        );
       } else if (task.status === "in_progress") {
-        const assignee = assigneeText ? ` ${theme.fg("text", theme.bold(assigneeText))}` : "";
-        const glyph = inProgressFrame === false
-          ? blankGlyph(task, config)
-          : statusGlyphFor(task, sorted, config, frame);
-        lines.push(`  ${theme.fg(glyphThemeColor(task), glyph)} ${idPart}${assignee} ${theme.fg("text", theme.bold(task.subject))}${elapsedSuffix}`);
+        const assignment = assignmentText
+          ? ` ${theme.fg("text", theme.bold(assignmentText))}`
+          : "";
+        const glyph =
+          inProgressFrame === false
+            ? blankGlyph(task)
+            : statusGlyphFor(task, sorted, frame);
+        lines.push(
+          `  ${theme.fg(glyphThemeColor(task), glyph)} ${idPart}${assignment} ${theme.fg("text", theme.bold(task.subject))}${elapsedSuffix}`,
+        );
       } else {
-        const assignee = assigneeText ? ` ${theme.fg("text", assigneeText)}` : "";
+        const assignment = assignmentText
+          ? ` ${theme.fg("text", assignmentText)}`
+          : "";
         const dependencies = blockedBySuffix(task);
-        lines.push(`  ${theme.fg(glyphThemeColor(task), statusGlyphFor(task, sorted, config))} ${idPart}${assignee} ${theme.fg("text", task.subject)}${dependencies ? theme.fg("dim", dependencies) : ""}${elapsedSuffix}`);
+        lines.push(
+          `  ${theme.fg(glyphThemeColor(task), statusGlyphFor(task, sorted))} ${idPart}${assignment} ${theme.fg("text", task.subject)}${dependencies ? theme.fg("dim", dependencies) : ""}${elapsedSuffix}`,
+        );
       }
     }
     return fitLinesToWidth(lines, width);
@@ -401,9 +537,13 @@ function hasInProgress(tasks: Task[]): boolean {
 /** Clock override for deterministic rendering/tests. A fixed epoch-ms pins elapsed output; a function is read on every render for live ticking. */
 export type NowProvider = number | (() => number);
 
-function resolveNow(now: NowProvider | undefined, fallback: number | undefined): number {
+function resolveNow(
+  now: NowProvider | undefined,
+  fallback: number | undefined,
+): number {
   // A per-render override wins over the provider clock.
-  if (typeof fallback === "number" && Number.isFinite(fallback)) return fallback;
+  if (typeof fallback === "number" && Number.isFinite(fallback))
+    return fallback;
   if (typeof now === "function") {
     try {
       const value = now();
@@ -431,7 +571,7 @@ function requestRedraw(tui: TuiWidthLike): void {
  * deterministic tests).
  *
  * When the current snapshot contains an in-progress task, a 250 ms timer
- * advances its configured frames (or legacy character/blank blink) and requests
+ * advances its fixed animation frames and requests
  * a redraw via `tui.requestRender()` (falling back to `tui.renderNow()`). A
  * separate 1 s timer keeps elapsed durations current. `update()` replaces the
  * rendered snapshot in place and starts or stops both timers as tasks enter or
@@ -480,7 +620,7 @@ export function createTaskWidget(
     }
     if (blinkTimer === undefined) {
       blinkTimer = setInterval(() => {
-        frame = (frame + 1) % inProgressFrames(config).length;
+        frame = (frame + 1) % inProgressFrames().length;
         requestRedraw(tui);
       }, BLINK_INTERVAL_MS);
     }
@@ -501,7 +641,15 @@ export function createTaskWidget(
           : typeof live === "number" && Number.isFinite(live) && live > 0
             ? live
             : undefined;
-      return renderWidgetLines(currentSnapshot, theme, resolved, frame, resolveNow(now, nowMs), currentTiming, config);
+      return renderWidgetLines(
+        currentSnapshot,
+        theme,
+        resolved,
+        frame,
+        resolveNow(now, nowMs),
+        currentTiming,
+        config,
+      );
     },
     update: (nextSnapshot: Task[], nextTiming?: ActiveTiming) => {
       if (disposed) return;

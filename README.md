@@ -11,54 +11,36 @@ when the extension registers:
 ```json
 {
   "maxAttempts": 8,
-  "enableAssignee": false,
-  "glyphs": {
-    "inProgress": { "character": "◌", "frames": ["◌", "○", "⨀", "◉", "●", "◉", "⨀", "○", "◌"] },
-    "pending": { "character": "◌", "retriedCharacter": "■" },
-    "completed": { "character": "●", "awaitingReviewCharacter": "○" },
-    "paused": { "character": "⏸" },
-    "deleted": { "character": "⌫" }
-  }
+  "enableAssignment": false,
+  "injectGuidelines": true
 }
 ```
 
 - A missing file or missing fields fall back to the defaults above.
-- Partial `glyphs` objects merge with the defaults per glyph field, so
-  `{ "glyphs": { "pending": { "retriedCharacter": "▶" } } }` changes only
-  that field. Configurable glyph fields are `inProgress.character` +
-  `inProgress.frames`, `pending.character` + `pending.retriedCharacter`,
-  `completed.character` + `completed.awaitingReviewCharacter`, and
-  `paused.character` / `deleted.character`. Glyph colors are
-  fixed by task status (see Widget below) and never configured.
-- `enableAssignee` (default `false`) gates assignee input, prompt guidance,
-  and assignee display. When `false`, `task_create`/`task_update` schemas
-  omit `assignee`, the `<task-management>` prompt carries no owner/assignee
-  guidance, and the widget, `/tasks` viewer, and human-oriented tool
-  rendering hide `@assignee` without reserving its column. When `true`,
-  `assignee` input (`create assignee?: string`,
-  `update assignee?: string|null`), the Assignment prompt section, and all
-  assignee display behave as before. Persisted assignee data always loads
-  and saves unchanged either way, and raw JSON tool payloads keep it.
-  Non-boolean values warn and fall back to `false`.
-- Explicit variant glyphs take precedence over legacy `character` fallbacks:
-  pending retried is explicit `retriedCharacter`, else explicit legacy
-  `pending.character`, else the default; completed awaiting-review is explicit
-  `awaitingReviewCharacter`, else explicit legacy `completed.character`, else
-  the default. Fresh pending and ordinary completed continue to use their
-  `character` values. For `inProgress`, a valid explicit `frames` takes
-  precedence even when `character` is also present; `frames` must be a non-empty
-  array of printable single-line glyphs with uniform visible width. An invalid
-  explicit `frames` warns and falls back to the default frames. A character-only
-  `inProgress` object (no `frames` key) retains `[character, same-width blank]`
-  blinking, even when the supplied `character` equals the default glyph. New keys merge with
-  defaults per field with warn-and-fallback when invalid.
+- `enableAssignment` (default `false`) gates assignment input, inline guideline
+  wording, and assignment display. When enabled, create accepts an optional
+  whole `assignment`; update accepts a whole replacement, `null` to remove, or
+  omission to preserve. Direct assignment is `{ "delegate": false, "owner": null }`;
+  delegated assignment is `{ "delegate": true, "owner": "<subagent type>" }`.
+  Assignment is planning metadata only and never dispatches, starts, resumes,
+  or authorizes execution. Delegated owners are opaque non-empty strings that
+  pi-tasks preserves exactly; runtime discovery, availability validation, and
+  agent selection belong to the subagent extension.
+- `injectGuidelines` (default `true`) controls whether the extension appends
+  the `<task-management>` policy block to the system prompt in
+  `before_agent_start` while `task_create` is active; an existing block is
+  left unchanged. When `false`, no system-prompt handler is registered and
+  nothing is appended. Tool summary descriptions and the `task_create`
+  `promptSnippet` are unchanged either way: the block carries the
+  workflow/lifecycle policy (scope, materialization, lifecycle, rework,
+  blocking), with inline `assignments` wording following `enableAssignment`.
+  There is no standalone `## Assignment` section; assignment semantics live on the
+  `assignment` schema descriptions.
+  Non-boolean values warn and fall back to `true`.
 - Malformed JSON or invalid values never crash startup: each problem is
   reported as a warning and only the offending value falls back to its
-  default. `maxAttempts` must be a non-negative safe integer (0 means unlimited); glyph
-  `character` values must be printable single-line strings with positive
-  visible width. Legacy glyph `defaultColor` keys are ignored (reported as
-  unknown keys) so configs written before configurable colors were removed
-  keep working.
+  default. `maxAttempts` must be a non-negative safe integer (0 means unlimited).
+  Unknown keys are reported and ignored.
 - `maxAttempts` is the per-task attempt cap applied to every task created by
   `task_create`. `task_create.tasks[]` items cannot set their own cap: a
   supplied `maxAttempts` is rejected.
@@ -118,17 +100,15 @@ wins). This is a pre-existing limitation.
 ## Tools
 
 Exactly four tools; no convenience, dependency, delete, or subagent tools. Field-specific
-input contracts live on parameter descriptions, while each tool description is
-limited to its purpose and operation-level invariants. While `task_create` is
-active, the extension appends one `<task-management>` policy block to the system
-prompt in `before_agent_start`; an existing block is left unchanged. This works
-with both Pi's default prompt and a custom `SYSTEM.md` without relying on
-`promptGuidelines`.
+input contracts live on parameter descriptions, while each tool description is a short
+summary starting with `Use this tool to`. Workflow/lifecycle policy lives in the
+`<task-management>` block appended to the system prompt in `before_agent_start`
+while `task_create` is active, gated by `injectGuidelines` (see Configuration).
 
 - `task_create { tasks: [{ ref?, subject, description, blockedBy?, blockedByRefs?, reviewOf?, reviewOfRefs?, metadata? }, ...] }`
   creates one or more `pending` tasks atomically. `tasks` must be non-empty.
-  When `enableAssignee` is `true`, each item additionally accepts
-  `assignee?: string` (assigned owner or agent).
+  When `enableAssignment` is `true`, each item additionally accepts an optional
+  whole `assignment` object as described under Configuration.
   Optional request-local refs must match `^[a-z][a-z0-9_-]*$`; they may be
   referenced through `blockedByRefs`/`reviewOfRefs` in the same request and are never
   persisted. Duplicate, unknown, self-referential, or cyclic refs reject the
@@ -145,9 +125,9 @@ with both Pi's default prompt and a custom `SYSTEM.md` without relying on
   the file unchanged.
 - `task_update { updates: [{ id, subject?, description?, status?, blockedBy?, reviewOf?, metadata?, appendLog? }, ...] }`
   patches one or more tasks atomically. `updates` must be non-empty and may
-  contain each numeric ID only once. When `enableAssignee` is `true`, each
-  patch additionally accepts `assignee?: string|null` (`null` removes the
-  field). It is a declarative patch set, not a
+  contain each numeric ID only once. When `enableAssignment` is `true`, each
+  patch additionally accepts `assignment?: Assignment|null`; omission preserves,
+  an object replaces the whole value, and `null` removes it. It is a declarative patch set, not a
   command sequence: all patches are applied to a cloned proposed state, then
   lifecycle and dependency rules are evaluated from original state to the
   complete proposed final state. Thus a dependency may become `completed`
@@ -241,9 +221,9 @@ with live counts:
 - `View all tasks (N)` — centered overlay with the task list on the left and
   full details for the selected task on the right (status, id/attempts,
   description, blockedBy, Review of (reviewers only), timestamps/timing, metadata, log). When
-  `enableAssignee` is `true`, details also show the assignee row. The
+  `enableAssignment` is `true`, details also show the assignment row. The
   attempt counter is omitted in rows and details for unlimited tasks
-  (`maxAttempts` 0); row glyphs use the configured review-aware glyphs. The
+  (`maxAttempts` 0); row glyphs use the fixed review-aware glyphs. The
   outer border renders in the theme's `border` color (plain when theming is
   unavailable). Keys: the configured `tui.editor.cursorUp` /
   `tui.editor.cursorDown` bindings change selection, PageUp/PageDown scrolls
@@ -264,10 +244,11 @@ A persistent `tasks` widget renders numeric ID, the remaining-attempts indicator
 `↻N` (`max(0, maxAttempts - attempt)`, so `attempt` 0 shows `maxAttempts`,
 `attempt` 1 shows `maxAttempts - 1`, and an exhausted task shows `↻0`; omitted
 for unlimited tasks with `maxAttempts` 0), subject, and per-attempt timing
-with the configured status glyph for pending,
-in-progress, paused, completed, and deleted tasks. When `enableAssignee` is
-`true`, each line additionally shows the optional `@assignee` between the
-remaining-attempts indicator and the subject. Defaults: fresh pending
+with the fixed status glyph for pending,
+in-progress, paused, completed, and deleted tasks. When `enableAssignment` is
+`true`, each line additionally shows `@self` for direct assignment or the
+optional `@<owner>` for delegated assignment between the
+remaining-attempts indicator and the subject. Fixed glyphs: fresh pending
 (`attempt` 0) `◌`, retried pending (`attempt` > 0) `■`, paused `⏸`, deleted `⌫`,
 completed awaiting its active reviewer `○`, other completed `●`, and `in_progress`
 frames `["◌", "○", "⨀", "◉", "●", "◉", "⨀", "○", "◌"]`. A completed writer shows `○` while an
@@ -278,13 +259,13 @@ review (presentation only, never transition gating). Shorter `#<id>`
 labels are right-padded to the widest ID in the rendered set so the `↻N`
 column starts at a consistent position. Shorter `↻N` labels are right-padded
 to the widest finite-task remaining-attempts label in the set (e.g. `↻8 ` against `↻10`)
-so the assignee column starts consistently; unlimited tasks show no `↻N` but
-reserve that width as spaces when at least one finite task is present. Assignee
-labels are left-aligned and padded to the widest visible `@assignee` label so
-subjects align; tasks without an assignee reserve that width only in mixed sets.
-When every task is unlimited, no remaining-attempts column is added. When `enableAssignee`
+so the assignment column starts consistently; unlimited tasks show no `↻N` but
+reserve that width as spaces when at least one finite task is present. Assignment
+labels are left-aligned and padded to the widest visible label so subjects align;
+tasks without an assignment reserve that width only in mixed sets.
+When every task is unlimited, no remaining-attempts column is added. When `enableAssignment`
 is `false`, or when no displayed task
-has an assignee, no assignee column is added. The `/tasks`
+has an assignment, no assignment column is added. The `/tasks`
 list/detail views and JSON payloads keep the numeric `(<attempt>/<maxAttempts>)`
 counter. Glyph colors are
 fixed and derived from status: fresh pending tasks (`attempt` 0) render dim/gray,
@@ -294,29 +275,28 @@ renders yellow/warning, and `deleted` renders dim/gray. Subjects render in
 the default text color (white) while pending, default text color and bold while in progress,
 dim gray without strikethrough when completed or paused, and dim gray with
 strikethrough when deleted. The optional
-`@assignee` field, including its right-padding, uses the same color, bold weight, and decoration
-as the subject. There is no per-task or configured glyph color: tool calls that
-supply `color` are rejected, persisted legacy `color` fields are ignored on load
-and omitted on write, and config `defaultColor` keys are ignored.
+assignment label, including its right-padding, uses the same color, bold weight, and decoration
+as the subject. There is no per-task or configured glyph or color: tool calls that
+supply `color` are rejected, and persisted legacy `color` fields are ignored on load
+and omitted on write.
 `in_progress` lines append the running attempt duration from `startedAt` to now
 (`0s` at zero); `completed`, `paused`, and `deleted` lines append only the frozen
 `<duration>` (`0s` when zero); `pending` lines show no duration. Pending and paused rows with
 prerequisites append ` → (ids)`: reviewers show their effective prerequisites
 (`blockedBy` ∪ `reviewOf`), writers show `blockedBy`. Plain deleted
 rows append `[deleted]`, and `/tasks` rows do the same.
-The header shows `● Tasks · N total · M done` (including `0 done`), plus ` · P paused`
+The header shows `❯ Tasks · N total · M done` (including `0 done`), plus ` · P paused`
 and ` · D deleted` when those counts are nonzero. After any task has entered `in_progress`, it
 also shows the global accumulated active (wall-clock union) time (`0s` when the
 measured total is still below one second); before then, the total is omitted.
 The total runs while at least one task is `in_progress`, excludes idle gaps
 without double-counting concurrency, and resumes across restarts and rework.
-Themed header renders the `● Tasks` title in accent (only `Tasks` bold) with the full stats tail dim/gray, and elapsed/completed duration text renders dim/gray, and the plain fallback
+Themed header renders the `❯ Tasks` title in accent (only `Tasks` bold) with the full stats tail dim/gray, and elapsed/completed duration text renders dim/gray, and the plain fallback
 includes the same text without styling.
 Pure rendering accepts an explicit current time (plus optional union timing)
 for deterministic output. The
-in-progress glyph animates through the valid configured frames every 250 ms; a character-only
-`inProgress` config (no `frames` key) blinks by alternating `character` with a same-width blank,
-even when that character equals the default glyph; the blink timer runs only while an
+in-progress glyph animates through the fixed frames every 250 ms, alternating
+frames with a same-width blank blink-off frame; the blink timer runs only while an
 in-progress task is shown. Static surfaces (plain lines, viewer rows, tool rendering)
 use the first frame. A separate 1 s timer requests redraws only while
 an in-progress task is shown so elapsed text stays current. All timers stop when the widget is replaced or removed.

@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Text, visibleWidth } from "@earendil-works/pi-tui";
 import { createToolHtmlRenderer } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/tool-renderer.js";
 import { ToolExecutionComponent } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/tool-execution.js";
-import { initTheme, theme } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
+import {
+  initTheme,
+  theme,
+} from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 import registerExtension from "../src/index.js";
 import { DEFAULT_CONFIG, type PiTasksConfig } from "../src/config.js";
 import {
@@ -41,24 +44,34 @@ afterEach(() => {
 });
 
 describe("task rendering formatters", () => {
-  const assigneeConfig: PiTasksConfig = { ...DEFAULT_CONFIG, enableAssignee: true };
+  const assignmentConfig: PiTasksConfig = {
+    ...DEFAULT_CONFIG,
+    enableAssignment: true,
+  };
   it("renders create singular/plural summaries and ID/title rows", () => {
     expect(renderTaskCreate([task()])).toEqual({
       collapsed: "✓ Created 1 task",
       expanded: "✓ Created 1 task\n  ◌ #1 Implement renderer",
     });
-    const many = renderTaskCreate([task(), task({ id: 2, subject: "Verify renderer" })]);
+    const many = renderTaskCreate([
+      task(),
+      task({ id: 2, subject: "Verify renderer" }),
+    ]);
     expect(many.collapsed).toBe("✓ Created 2 tasks");
     expect(many.expanded).toContain("\n  ◌ #2 Verify renderer");
     expect(many.expanded).not.toContain("task(s)");
   });
 
   it("renders semantic update diffs in fixed order and excludes derived fields", () => {
-    const before = task({ assignee: "old", blockedBy: [2], metadata: { z: 1, same: true } });
+    const before = task({
+      assignment: { delegate: true, owner: "old" },
+      blockedBy: [2],
+      metadata: { z: 1, same: true },
+    });
     const after = task({
       subject: "Final subject",
       description: "New description",
-      assignee: "new",
+      assignment: { delegate: true, owner: "new" },
       status: "completed",
       blockedBy: [3],
       metadata: { z: 2, same: true },
@@ -71,53 +84,73 @@ describe("task rendering formatters", () => {
       "status",
       "subject",
       "description",
-      "assignee",
+      "assignment",
       "dependencies",
       "metadata",
       "log",
     ]);
-    expect(renderTaskUpdate([{ before, after }], assigneeConfig)).toEqual({
+    expect(renderTaskUpdate([{ before, after }], assignmentConfig)).toEqual({
       collapsed: "✓ Updated 1 task",
-      expanded: "✓ Updated 1 task\n  ● #1 Final subject → status, subject, description, assignee, dependencies, metadata, log",
+      expanded:
+        "✓ Updated 1 task\n  ● #1 Final subject → status, subject, description, assignment, dependencies, metadata, log",
     });
 
-    const derivedOnly = task({ attempt: 1, updatedAt: "later", startedAt: "now" });
-    expect(renderTaskUpdate([{ before: task(), after: derivedOnly }]).expanded).toBe(
-      "✓ Updated 1 task\n  ■ #1 Implement renderer → no changes",
-    );
+    const derivedOnly = task({
+      attempt: 1,
+      updatedAt: "later",
+      startedAt: "now",
+    });
+    expect(
+      renderTaskUpdate([{ before: task(), after: derivedOnly }]).expanded,
+    ).toBe("✓ Updated 1 task\n  ■ #1 Implement renderer → no changes");
   });
 
   it("renders the get operational view with bounded latest logs and placeholders", () => {
-    const view = renderTaskGet(task({
-      maxAttempts: 0,
-      log: ["one", "two", "three", "four"].map((message, index) => ({ timestamp: String(index), message })),
-      metadata: { secret: "not displayed" },
-    }), [task()], assigneeConfig);
+    const view = renderTaskGet(
+      task({
+        maxAttempts: 0,
+        log: ["one", "two", "three", "four"].map((message, index) => ({
+          timestamp: String(index),
+          message,
+        })),
+        metadata: { secret: "not displayed" },
+      }),
+      [task()],
+      assignmentConfig,
+    );
     expect(view.collapsed).toBe("✓ Retrieved task #1");
-    expect(view.expanded).toBe([
-      "✓ Retrieved task #1",
-      "  ◌ #1 Implement renderer",
-      "  Status: pending",
-      "  Description: Show useful task details",
-      "  Assignee: —",
-      "  Dependencies: —",
-      "  Attempts: 0/unlimited",
-      "  Recent log:",
-      "  - two",
-      "  - three",
-      "  - four",
-    ].join("\n"));
+    expect(view.expanded).toBe(
+      [
+        "✓ Retrieved task #1",
+        "  ◌ #1 Implement renderer",
+        "  Status: pending",
+        "  Description: Show useful task details",
+        "  Assignment: —",
+        "  Dependencies: —",
+        "  Attempts: 0/unlimited",
+        "  Recent log:",
+        "  - two",
+        "  - three",
+        "  - four",
+      ].join("\n"),
+    );
     expect(view.expanded).not.toContain("one");
     expect(view.expanded).not.toContain("metadata");
     expect(view.expanded).not.toContain("timestamp");
-    expect(renderTaskGet(task(), [task()], assigneeConfig).expanded).toContain("  Attempts: 0/8\n  Recent log: —");
+    expect(
+      renderTaskGet(task(), [task()], assignmentConfig).expanded,
+    ).toContain("  Attempts: 0/8\n  Recent log: —");
   });
 
   it("renders filtered, ordered, and empty lists", () => {
-    const tasks = [task({ id: 2, subject: "Second", status: "completed" }), task({ id: 1, subject: "First" })];
+    const tasks = [
+      task({ id: 2, subject: "Second", status: "completed" }),
+      task({ id: 1, subject: "First" }),
+    ];
     expect(renderTaskList(tasks, "completed")).toEqual({
       collapsed: "✓ Listed 2 tasks · status: completed",
-      expanded: "✓ Listed 2 tasks · status: completed\n  ● #2 Second → completed\n  ◌ #1 First → pending",
+      expanded:
+        "✓ Listed 2 tasks · status: completed\n  ● #2 Second → completed\n  ◌ #1 First → pending",
     });
     expect(renderTaskList([], "paused")).toEqual({
       collapsed: "○ No tasks · status: paused",
@@ -126,38 +159,70 @@ describe("task rendering formatters", () => {
   });
 
   it("uses exact operation errors, sanitizes expected detail, and masks unexpected detail", () => {
-    expect(renderTaskToolError("create", "bad\ninput\u001b[31m", undefined, true).collapsed).toBe("✗ Failed to create tasks");
-    expect(renderTaskToolError("update", "bad", undefined, true).collapsed).toBe("✗ Failed to update tasks");
-    expect(renderTaskToolError("get", "bad", 9, true).collapsed).toBe("✗ Failed to retrieve task #9");
-    expect(renderTaskToolError("list", "bad", undefined, true).collapsed).toBe("✗ Failed to list tasks");
-    const expected = renderTaskToolError("get", "bad\ninput\u001b[31m", 9, true);
+    expect(
+      renderTaskToolError("create", "bad\ninput\u001b[31m", undefined, true)
+        .collapsed,
+    ).toBe("✗ Failed to create tasks");
+    expect(
+      renderTaskToolError("update", "bad", undefined, true).collapsed,
+    ).toBe("✗ Failed to update tasks");
+    expect(renderTaskToolError("get", "bad", 9, true).collapsed).toBe(
+      "✗ Failed to retrieve task #9",
+    );
+    expect(renderTaskToolError("list", "bad", undefined, true).collapsed).toBe(
+      "✗ Failed to list tasks",
+    );
+    const expected = renderTaskToolError(
+      "get",
+      "bad\ninput\u001b[31m",
+      9,
+      true,
+    );
     expect(expected.expanded).toBe("✗ Failed to retrieve task #9\n  bad input");
-    const unexpected = renderTaskToolError("list", new Error("internal secret"));
-    expect(unexpected.expanded).toBe("✗ Failed to list tasks\n  Unexpected internal error.");
+    const unexpected = renderTaskToolError(
+      "list",
+      new Error("internal secret"),
+    );
+    expect(unexpected.expanded).toBe(
+      "✗ Failed to list tasks\n  Unexpected internal error.",
+    );
     expect(unexpected.expanded).not.toContain("secret");
   });
 
   it("neutralizes controls and keeps every rendered line width bounded", () => {
     expect(sanitizeText("a\n\tb\u001b[31mred\u001b[0m")).toBe("a bred");
-    const rendered = renderTaskCreate([task({ subject: `unsafe\n\u001b[31m${"界".repeat(100)}` })]).expanded;
+    const rendered = renderTaskCreate([
+      task({ subject: `unsafe\n\u001b[31m${"界".repeat(100)}` }),
+    ]).expanded;
     expect(rendered).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
-    expect(rendered.split("\n").every((line) => visibleWidth(line) <= 120)).toBe(true);
+    expect(
+      rendered.split("\n").every((line) => visibleWidth(line) <= 120),
+    ).toBe(true);
   });
 
   it("renders safely at narrow host widths and preserves update change fields", () => {
     const before = task();
     const after = task({
-      subject: "A very long final subject that should yield space to the semantic change suffix",
+      subject:
+        "A very long final subject that should yield space to the semantic change suffix",
       status: "completed",
       description: "changed",
-      assignee: "reviewer",
-      blockedBy: [2], });
-    const rendering = renderTaskUpdate([{ before, after }], assigneeConfig);
-    expect(rendering.expanded).toMatch(/→ status, subject, description, assignee, dependencies$/);
-    expect(rendering.expanded).not.toContain("A very long final subject that should yield space to the semantic change suffix →");
+      assignment: { delegate: true, owner: "reviewer" },
+      blockedBy: [2],
+    });
+    const rendering = renderTaskUpdate([{ before, after }], assignmentConfig);
+    expect(rendering.expanded).toMatch(
+      /→ status, subject, description, assignment, dependencies$/,
+    );
+    expect(rendering.expanded).not.toContain(
+      "A very long final subject that should yield space to the semantic change suffix →",
+    );
 
     const lines = renderTaskResult(
-      { content: [{ type: "text", text: "model text" }], details: { rendering } },
+      {
+        content: [{ type: "text", text: "model text" }],
+        details: { rendering },
+      },
       true,
       false,
     ).render(24);
@@ -165,7 +230,10 @@ describe("task rendering formatters", () => {
     expect(lines.join("\n")).toContain("dependencies");
 
     const themedLines = renderTaskResult(
-      { content: [{ type: "text", text: "model text" }], details: { rendering } },
+      {
+        content: [{ type: "text", text: "model text" }],
+        details: { rendering },
+      },
       true,
       false,
       "update",
@@ -177,16 +245,30 @@ describe("task rendering formatters", () => {
 
   it("themes settled summaries and every expanded detail line", () => {
     const calls: Array<[string, string]> = [];
-    const theme = { fg: (color: string, text: string) => { calls.push([color, text]); return text; } } as any;
-    const rendering = renderTaskCreate([task(), task({ id: 2, subject: "Verify renderer" })]);
+    const theme = {
+      fg: (color: string, text: string) => {
+        calls.push([color, text]);
+        return text;
+      },
+    } as any;
+    const rendering = renderTaskCreate([
+      task(),
+      task({ id: 2, subject: "Verify renderer" }),
+    ]);
     const rendered = renderTaskResult(
-      { content: [{ type: "text", text: "model text" }], details: { rendering } },
+      {
+        content: [{ type: "text", text: "model text" }],
+        details: { rendering },
+      },
       true,
       false,
       "create",
       undefined,
       theme,
-    ).render(200).map((line) => line.trimEnd()).join("\n");
+    )
+      .render(200)
+      .map((line) => line.trimEnd())
+      .join("\n");
 
     expect(rendered).toBe(rendering.expanded);
     expect(calls).toEqual([
@@ -198,14 +280,22 @@ describe("task rendering formatters", () => {
 
     calls.length = 0;
     const failure = renderTaskToolError("get", "missing", 4, true);
-    expect(renderTaskResult(
-      { content: [{ type: "text", text: "missing" }], details: { rendering: failure } },
-      true,
-      true,
-      "get",
-      4,
-      theme,
-    ).render(200).map((line) => line.trimEnd()).join("\n")).toBe(failure.expanded);
+    expect(
+      renderTaskResult(
+        {
+          content: [{ type: "text", text: "missing" }],
+          details: { rendering: failure },
+        },
+        true,
+        true,
+        "get",
+        4,
+        theme,
+      )
+        .render(200)
+        .map((line) => line.trimEnd())
+        .join("\n"),
+    ).toBe(failure.expanded);
     expect(calls).toEqual([
       ["error", "✗"],
       ["error", "Failed to retrieve task #4"],
@@ -214,43 +304,72 @@ describe("task rendering formatters", () => {
 
     calls.length = 0;
     const empty = renderTaskList([]);
-    expect(renderTaskResult(
-      { content: [{ type: "text", text: "[]" }], details: { rendering: empty } },
-      false,
-      false,
-      "list",
-      undefined,
-      theme,
-    ).render(200).join("\n").trimEnd()).toBe(empty.collapsed);
-    expect(calls).toEqual([["dim", "○"], ["toolTitle", "No tasks"]]);
+    expect(
+      renderTaskResult(
+        {
+          content: [{ type: "text", text: "[]" }],
+          details: { rendering: empty },
+        },
+        false,
+        false,
+        "list",
+        undefined,
+        theme,
+      )
+        .render(200)
+        .join("\n")
+        .trimEnd(),
+    ).toBe(empty.collapsed);
+    expect(calls).toEqual([
+      ["dim", "○"],
+      ["toolTitle", "No tasks"],
+    ]);
   });
 
   it("preserves plain output when theming is unavailable or throws", () => {
     const rendering = renderTaskCreate([task()]);
-    const result = { content: [{ type: "text", text: "model text" }], details: { rendering } };
-    expect(renderTaskResult(result, true, false).render(200).map((line) => line.trimEnd()).join("\n")).toBe(rendering.expanded);
-    expect(renderTaskResult(
-      result,
-      true,
-      false,
-      "create",
-      undefined,
-      { fg: () => { throw new Error("theme failed"); } },
-    ).render(200).map((line) => line.trimEnd()).join("\n")).toBe(rendering.expanded);
+    const result = {
+      content: [{ type: "text", text: "model text" }],
+      details: { rendering },
+    };
+    expect(
+      renderTaskResult(result, true, false)
+        .render(200)
+        .map((line) => line.trimEnd())
+        .join("\n"),
+    ).toBe(rendering.expanded);
+    expect(
+      renderTaskResult(result, true, false, "create", undefined, {
+        fg: () => {
+          throw new Error("theme failed");
+        },
+      })
+        .render(200)
+        .map((line) => line.trimEnd())
+        .join("\n"),
+    ).toBe(rendering.expanded);
   });
 
   it("advances one reused spinner through context.invalidate and stops without leaks", () => {
     vi.useFakeTimers();
     const invalidate = vi.fn();
     const state: any = {};
-    const context: any = { toolCallId: "create-1", executionStarted: false, isPartial: true, invalidate, state };
+    const context: any = {
+      toolCallId: "create-1",
+      executionStarted: false,
+      isPartial: true,
+      invalidate,
+      state,
+    };
     const first = renderTaskCall("Creating tasks…", context);
     const firstFrame = first.render(200).join("\n").trimEnd();
-    expect(firstFrame).toMatch(/^⠋ Creating tasks…$/);
+    expect(firstFrame).toMatch(/^⠐ Creating tasks…$/);
     expect(vi.getTimerCount()).toBe(1);
 
     vi.advanceTimersByTime(80);
-    expect(first.render(200).join("\n").trimEnd()).toMatch(/^⠙ Creating tasks…$/);
+    expect(first.render(200).join("\n").trimEnd()).toMatch(
+      /^⠰ Creating tasks…$/,
+    );
     expect(invalidate).toHaveBeenCalledTimes(1);
 
     context.lastComponent = first;
@@ -280,29 +399,42 @@ describe("task rendering formatters", () => {
       invalidate: initialInvalidate,
       state: {},
     });
-    expect(initial.render(200).join("\n").trimEnd()).toBe("⠋ Listing tasks…");
+    expect(initial.render(200).join("\n").trimEnd()).toBe("⠐ Listing tasks…");
     expect(vi.getTimerCount()).toBe(1);
     vi.advanceTimersByTime(80);
-    expect(initial.render(200).join("\n").trimEnd()).toBe("⠙ Listing tasks…");
+    expect(initial.render(200).join("\n").trimEnd()).toBe("⠰ Listing tasks…");
     expect(initialInvalidate).toHaveBeenCalledTimes(1);
-    expect(renderTaskCall("Listing tasks…", {
-      toolCallId: "not-started",
-      executionStarted: true,
-      isPartial: false,
-    }).render(200)).toEqual([]);
-    expect(renderTaskCall("Listing tasks…", {
-      toolCallId: "settled",
-      executionStarted: true,
-      isPartial: false,
-      state: {},
-    }).render(200)).toEqual([]);
+    expect(
+      renderTaskCall("Listing tasks…", {
+        toolCallId: "not-started",
+        executionStarted: true,
+        isPartial: false,
+      }).render(200),
+    ).toEqual([]);
+    expect(
+      renderTaskCall("Listing tasks…", {
+        toolCallId: "settled",
+        executionStarted: true,
+        isPartial: false,
+        state: {},
+      }).render(200),
+    ).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
 
     const state: any = {};
-    const running = renderTaskCall("Listing tasks…", { toolCallId: "list-1", executionStarted: false, isPartial: true, invalidate: vi.fn(), state });
+    const running = renderTaskCall("Listing tasks…", {
+      toolCallId: "list-1",
+      executionStarted: false,
+      isPartial: true,
+      invalidate: vi.fn(),
+      state,
+    });
     expect(vi.getTimerCount()).toBe(1);
     renderTaskResult(
-      { content: [{ type: "text", text: "[]" }], details: { rendering: renderTaskList([]) } },
+      {
+        content: [{ type: "text", text: "[]" }],
+        details: { rendering: renderTaskList([]) },
+      },
       false,
       false,
       "list",
@@ -320,7 +452,11 @@ describe("task rendering formatters", () => {
       state: {},
     });
     expect(afterSuccess).not.toBe(running);
-    renderTaskCall("Listing tasks…", { toolCallId: "list-1", executionStarted: true, isPartial: false });
+    renderTaskCall("Listing tasks…", {
+      toolCallId: "list-1",
+      executionStarted: true,
+      isPartial: false,
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -357,7 +493,11 @@ describe("task rendering formatters", () => {
     expect(recoveredWithoutState).toBe(first);
     expect(vi.getTimerCount()).toBe(1);
 
-    renderTaskCall("Updating tasks…", { toolCallId: "recover-1", executionStarted: true, isPartial: false });
+    renderTaskCall("Updating tasks…", {
+      toolCallId: "recover-1",
+      executionStarted: true,
+      isPartial: false,
+    });
     expect(vi.getTimerCount()).toBe(0);
     expect(firstState.taskCallSpinner).toBeUndefined();
     expect(replacementState.taskCallSpinner).toBeUndefined();
@@ -369,7 +509,11 @@ describe("task rendering formatters", () => {
       state: {},
     });
     expect(afterCleanup).not.toBe(first);
-    renderTaskCall("Updating tasks…", { toolCallId: "recover-1", executionStarted: true, isPartial: false });
+    renderTaskCall("Updating tasks…", {
+      toolCallId: "recover-1",
+      executionStarted: true,
+      isPartial: false,
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -413,7 +557,11 @@ describe("task rendering formatters", () => {
       state: {},
     });
     expect(afterCleanup).not.toBe(replacement);
-    renderTaskCall("Updating tasks…", { toolCallId: "replace-1", executionStarted: true, isPartial: false });
+    renderTaskCall("Updating tasks…", {
+      toolCallId: "replace-1",
+      executionStarted: true,
+      isPartial: false,
+    });
   });
 
   it("does not animate without a stable toolCallId and stops when invalidate throws", () => {
@@ -427,7 +575,9 @@ describe("task rendering formatters", () => {
     });
     expect(fallback.render(200).join("\n").trimEnd()).toBe("Retrieving task…");
     expect(state.taskCallSpinner).toBeUndefined();
-    expect(renderTaskCall("Retrieving task…").render(200).join("\n").trimEnd()).toBe("Retrieving task…");
+    expect(
+      renderTaskCall("Retrieving task…").render(200).join("\n").trimEnd(),
+    ).toBe("Retrieving task…");
     expect(vi.getTimerCount()).toBe(0);
 
     const throwingState: any = {};
@@ -435,7 +585,9 @@ describe("task rendering formatters", () => {
       toolCallId: "throw-1",
       executionStarted: false,
       isPartial: true,
-      invalidate: () => { throw new Error("render unavailable"); },
+      invalidate: () => {
+        throw new Error("render unavailable");
+      },
       state: throwingState,
     });
     expect(vi.getTimerCount()).toBe(1);
@@ -462,7 +614,11 @@ describe("task rendering formatters", () => {
     });
     expect(restarted).not.toBe(throwing);
     expect(vi.getTimerCount()).toBe(1);
-    renderTaskCall("Retrieving task…", { toolCallId: "throw-1", executionStarted: true, isPartial: false });
+    renderTaskCall("Retrieving task…", {
+      toolCallId: "throw-1",
+      executionStarted: true,
+      isPartial: false,
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
 });
@@ -473,9 +629,12 @@ describe("registered tool renderers", () => {
     registerExtension({
       on() {},
       registerCommand() {},
-      registerTool(tool: any) { tools.set(tool.name, tool); },
+      registerTool(tool: any) {
+        tools.set(tool.name, tool);
+      },
     } as any);
-    const text = (name: string, args: unknown) => tools.get(name).renderCall(args, {}, {}).render(200).join("\n").trimEnd();
+    const text = (name: string, args: unknown) =>
+      tools.get(name).renderCall(args, {}, {}).render(200).join("\n").trimEnd();
     expect(text("task_create", { tasks: [{}, {}] })).toBe("Creating tasks…");
     expect(text("task_update", { updates: [{}, {}] })).toBe("Updating tasks…");
     expect(text("task_get", { id: 3 })).toBe("Retrieving task…");
@@ -491,7 +650,13 @@ describe("registered tool renderers", () => {
   it("uses the host render context to animate all four labels without argument detail", () => {
     vi.useFakeTimers();
     const tools = new Map<string, any>();
-    registerExtension({ on() {}, registerCommand() {}, registerTool(tool: any) { tools.set(tool.name, tool); } } as any);
+    registerExtension({
+      on() {},
+      registerCommand() {},
+      registerTool(tool: any) {
+        tools.set(tool.name, tool);
+      },
+    } as any);
     const cases = [
       ["task_create", { tasks: [{}, {}] }, "Creating tasks…"],
       ["task_update", { updates: [{}, {}] }, "Updating tasks…"],
@@ -510,9 +675,9 @@ describe("registered tool renderers", () => {
         state: {},
       };
       const component = tools.get(name).renderCall(args, {}, context);
-      expect(component.render(200).join("\n").trimEnd()).toBe(`⠋ ${label}`);
+      expect(component.render(200).join("\n").trimEnd()).toBe(`⠐ ${label}`);
       vi.advanceTimersByTime(80);
-      expect(component.render(200).join("\n").trimEnd()).toBe(`⠙ ${label}`);
+      expect(component.render(200).join("\n").trimEnd()).toBe(`⠰ ${label}`);
       expect(context.invalidate).toHaveBeenCalledTimes(1);
       context.lastComponent = component;
       context.isPartial = false;
@@ -526,10 +691,22 @@ describe("registered tool renderers", () => {
     vi.useFakeTimers();
     initTheme(undefined, false);
     const tools = new Map<string, any>();
-    registerExtension({ on() {}, registerCommand() {}, registerTool(tool: any) { tools.set(tool.name, tool); } } as any);
+    registerExtension({
+      on() {},
+      registerCommand() {},
+      registerTool(tool: any) {
+        tools.set(tool.name, tool);
+      },
+    } as any);
     const cases = [
       ["task_create", "Creating tasks…", renderTaskCreate([task()])],
-      ["task_update", "Updating tasks…", renderTaskUpdate([{ before: task(), after: task({ status: "completed" }) }])],
+      [
+        "task_update",
+        "Updating tasks…",
+        renderTaskUpdate([
+          { before: task(), after: task({ status: "completed" }) },
+        ]),
+      ],
       ["task_get", "Retrieving task…", renderTaskGet(task())],
       ["task_list", "Listing tasks…", renderTaskList([task()])],
     ] as const;
@@ -547,7 +724,11 @@ describe("registered tool renderers", () => {
 
       host.markExecutionStarted();
       host.updateResult(
-        { content: [{ type: "text", text: "model text" }], details: { rendering }, isError: false },
+        {
+          content: [{ type: "text", text: "model text" }],
+          details: { rendering },
+          isError: false,
+        },
         false,
       );
       const settled = host.render(200).join("\n");
@@ -561,7 +742,13 @@ describe("registered tool renderers", () => {
     vi.useFakeTimers();
     initTheme(undefined, false);
     const tools = new Map<string, any>();
-    registerExtension({ on() {}, registerCommand() {}, registerTool(tool: any) { tools.set(tool.name, tool); } } as any);
+    registerExtension({
+      on() {},
+      registerCommand() {},
+      registerTool(tool: any) {
+        tools.set(tool.name, tool);
+      },
+    } as any);
     const exporter = createToolHtmlRenderer({
       getToolDefinition: (name: string) => tools.get(name),
       theme,
@@ -570,7 +757,13 @@ describe("registered tool renderers", () => {
     });
     const cases = [
       ["task_create", "Creating tasks…", renderTaskCreate([task()])],
-      ["task_update", "Updating tasks…", renderTaskUpdate([{ before: task(), after: task({ status: "completed" }) }])],
+      [
+        "task_update",
+        "Updating tasks…",
+        renderTaskUpdate([
+          { before: task(), after: task({ status: "completed" }) },
+        ]),
+      ],
       ["task_get", "Retrieving task…", renderTaskGet(task())],
       ["task_list", "Listing tasks…", renderTaskList([task()])],
     ] as const;
@@ -589,52 +782,105 @@ describe("registered tool renderers", () => {
       expect(call).toBe("");
       expect(result?.expanded).toContain(rendering.collapsed.slice(2));
       expect(html).not.toContain(loadingLabel);
-      expect(html).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+      expect(html).not.toMatch(/[⠐⠰⠴⠶⠦⠖⠒]/);
       expect(vi.getTimerCount()).toBe(0);
     }
 
-    expect(exporter.renderCall("export-result-less", "task_create", {})).toBe("");
+    expect(exporter.renderCall("export-result-less", "task_create", {})).toBe(
+      "",
+    );
     expect(vi.getTimerCount()).toBe(0);
   });
 
   it("uses host context errors for masking and safely handles missing context", () => {
     const tools = new Map<string, any>();
-    registerExtension({ on() {}, registerCommand() {}, registerTool(tool: any) { tools.set(tool.name, tool); } } as any);
-    const result = { content: [{ type: "text", text: "unchanged model JSON/error text" }], details: undefined };
+    registerExtension({
+      on() {},
+      registerCommand() {},
+      registerTool(tool: any) {
+        tools.set(tool.name, tool);
+      },
+    } as any);
+    const result = {
+      content: [{ type: "text", text: "unchanged model JSON/error text" }],
+      details: undefined,
+    };
     for (const tool of tools.values()) {
-      expect(tool.renderResult(result, { expanded: false, isPartial: false }, {}, { args: {}, isError: false }).render(200).join("\n").trimEnd()).toBe(
-        "unchanged model JSON/error text",
-      );
+      expect(
+        tool
+          .renderResult(
+            result,
+            { expanded: false, isPartial: false },
+            {},
+            { args: {}, isError: false },
+          )
+          .render(200)
+          .join("\n")
+          .trimEnd(),
+      ).toBe("unchanged model JSON/error text");
     }
-    expect(tools.get("task_list").renderResult(
-      { ...result, details: { rendering: null } },
-      { expanded: true, isPartial: false },
-      {},
-      { args: {}, isError: false },
-    ).render(200).join("\n").trimEnd()).toBe("unchanged model JSON/error text");
+    expect(
+      tools
+        .get("task_list")
+        .renderResult(
+          { ...result, details: { rendering: null } },
+          { expanded: true, isPartial: false },
+          {},
+          { args: {}, isError: false },
+        )
+        .render(200)
+        .join("\n")
+        .trimEnd(),
+    ).toBe("unchanged model JSON/error text");
 
-    const masked = tools.get("task_get").renderResult(
-      { content: [{ type: "text", text: "internal secret" }], details: undefined },
-      { expanded: true, isPartial: false },
-      {},
-      { args: { id: 7 }, isError: true },
-    ).render(200).map((line: string) => line.trimEnd()).join("\n");
-    expect(masked).toBe("✗ Failed to retrieve task #7\n  Unexpected internal error.");
+    const masked = tools
+      .get("task_get")
+      .renderResult(
+        {
+          content: [{ type: "text", text: "internal secret" }],
+          details: undefined,
+        },
+        { expanded: true, isPartial: false },
+        {},
+        { args: { id: 7 }, isError: true },
+      )
+      .render(200)
+      .map((line: string) => line.trimEnd())
+      .join("\n");
+    expect(masked).toBe(
+      "✗ Failed to retrieve task #7\n  Unexpected internal error.",
+    );
 
-    const partialContext = tools.get("task_update").renderResult(
-      { content: [{ type: "text", text: "internal secret" }], details: { rendering: null } },
-      { expanded: true, isPartial: false },
-      {},
-      undefined,
-    ).render(200).map((line: string) => line.trimEnd()).join("\n");
+    const partialContext = tools
+      .get("task_update")
+      .renderResult(
+        {
+          content: [{ type: "text", text: "internal secret" }],
+          details: { rendering: null },
+        },
+        { expanded: true, isPartial: false },
+        {},
+        undefined,
+      )
+      .render(200)
+      .map((line: string) => line.trimEnd())
+      .join("\n");
     expect(partialContext).toBe("internal secret");
 
-    const missingArgs = tools.get("task_get").renderResult(
-      { content: [{ type: "text", text: "internal secret" }], details: { rendering: null } },
-      { expanded: false, isPartial: false },
-      {},
-      { isError: true },
-    ).render(200).join("\n").trimEnd();
+    const missingArgs = tools
+      .get("task_get")
+      .renderResult(
+        {
+          content: [{ type: "text", text: "internal secret" }],
+          details: { rendering: null },
+        },
+        { expanded: false, isPartial: false },
+        {},
+        { isError: true },
+      )
+      .render(200)
+      .join("\n")
+      .trimEnd();
     expect(missingArgs).toBe("✗ Failed to retrieve task #");
   });
 });
@@ -661,22 +907,42 @@ describe("pending spinner theming", () => {
       for (const [name, label] of cases) {
         const { calls, theme } = recordingTheme();
         const state: any = {};
-        const component = renderTaskCall(label, {
-          toolCallId: `themed-${name}`,
-          executionStarted: false,
-          isPartial: true,
-          invalidate: vi.fn(),
-          state,
-        }, theme);
-        expect(calls).toEqual([["accent", "⠋"], ["toolTitle", label]]);
-        expect(component.render(200).join("\n")).toContain(`<accent>⠋</> <toolTitle>${label}</>`);
+        const component = renderTaskCall(
+          label,
+          {
+            toolCallId: `themed-${name}`,
+            executionStarted: false,
+            isPartial: true,
+            invalidate: vi.fn(),
+            state,
+          },
+          theme,
+        );
+        expect(calls).toEqual([
+          ["accent", "⠐"],
+          ["toolTitle", label],
+        ]);
+        expect(component.render(200).join("\n")).toContain(
+          `<accent>⠐</> <toolTitle>${label}</>`,
+        );
         calls.length = 0;
         vi.advanceTimersByTime(80);
-        expect(calls).toEqual([["accent", "⠙"], ["toolTitle", label]]);
-        expect(component.render(200).join("\n")).toContain(`<accent>⠙</> <toolTitle>${label}</>`);
+        expect(calls).toEqual([
+          ["accent", "⠰"],
+          ["toolTitle", label],
+        ]);
+        expect(component.render(200).join("\n")).toContain(
+          `<accent>⠰</> <toolTitle>${label}</>`,
+        );
         const themedLines = component.render(24);
-        expect(themedLines.every((line) => visibleWidth(line) <= 24)).toBe(true);
-        renderTaskCall(label, { toolCallId: `themed-${name}`, executionStarted: true, isPartial: false });
+        expect(themedLines.every((line) => visibleWidth(line) <= 24)).toBe(
+          true,
+        );
+        renderTaskCall(label, {
+          toolCallId: `themed-${name}`,
+          executionStarted: true,
+          isPartial: false,
+        });
       }
       expect(vi.getTimerCount()).toBe(0);
     } finally {
@@ -688,7 +954,13 @@ describe("pending spinner theming", () => {
     vi.useFakeTimers();
     try {
       const tools = new Map<string, any>();
-      registerExtension({ on() {}, registerCommand() {}, registerTool(tool: any) { tools.set(tool.name, tool); } } as any);
+      registerExtension({
+        on() {},
+        registerCommand() {},
+        registerTool(tool: any) {
+          tools.set(tool.name, tool);
+        },
+      } as any);
       const cases = [
         ["task_create", { tasks: [{}, {}] }, "Creating tasks…"],
         ["task_update", { updates: [{}, {}] }, "Updating tasks…"],
@@ -698,16 +970,27 @@ describe("pending spinner theming", () => {
       for (const [name, args, label] of cases) {
         const { calls, theme } = recordingTheme();
         const context: any = {
-          args, toolCallId: `host-themed-${name}`, executionStarted: false,
-          isPartial: true, invalidate: vi.fn(), state: {},
+          args,
+          toolCallId: `host-themed-${name}`,
+          executionStarted: false,
+          isPartial: true,
+          invalidate: vi.fn(),
+          state: {},
         };
         const component = tools.get(name).renderCall(args, theme, context);
-        expect(calls).toEqual([["accent", "⠋"], ["toolTitle", label]]);
-        expect(component.render(200).join("\n")).toContain(`<accent>⠋</> <toolTitle>${label}</>`);
+        expect(calls).toEqual([
+          ["accent", "⠐"],
+          ["toolTitle", label],
+        ]);
+        expect(component.render(200).join("\n")).toContain(
+          `<accent>⠐</> <toolTitle>${label}</>`,
+        );
         expect(component.render(200).join("\n")).not.toContain("99");
         context.lastComponent = component;
         context.isPartial = false;
-        expect(tools.get(name).renderCall(args, theme, context).render(200)).toEqual([]);
+        expect(
+          tools.get(name).renderCall(args, theme, context).render(200),
+        ).toEqual([]);
       }
       expect(vi.getTimerCount()).toBe(0);
     } finally {
@@ -719,32 +1002,68 @@ describe("pending spinner theming", () => {
     vi.useFakeTimers();
     try {
       const { calls, theme } = recordingTheme();
-      const fallback = renderTaskCall("Listing tasks…", {
-        executionStarted: false, isPartial: true, invalidate: vi.fn(), state: {},
-      }, theme);
+      const fallback = renderTaskCall(
+        "Listing tasks…",
+        {
+          executionStarted: false,
+          isPartial: true,
+          invalidate: vi.fn(),
+          state: {},
+        },
+        theme,
+      );
       expect(fallback).toBeInstanceOf(Text);
       expect(calls).toEqual([["toolTitle", "Listing tasks…"]]);
-      expect(fallback.render(200).join("\n")).toContain("<toolTitle>Listing tasks…</>");
+      expect(fallback.render(200).join("\n")).toContain(
+        "<toolTitle>Listing tasks…</>",
+      );
       expect(vi.getTimerCount()).toBe(0);
 
       const first = recordingTheme();
       const state: any = {};
-      const spinner = renderTaskCall("Creating tasks…", {
-        toolCallId: "theme-refresh", executionStarted: false,
-        isPartial: true, invalidate: vi.fn(), state,
-      }, first.theme);
+      const spinner = renderTaskCall(
+        "Creating tasks…",
+        {
+          toolCallId: "theme-refresh",
+          executionStarted: false,
+          isPartial: true,
+          invalidate: vi.fn(),
+          state,
+        },
+        first.theme,
+      );
       const second = recordingTheme();
-      const reused = renderTaskCall("Creating tasks…", {
-        toolCallId: "theme-refresh", executionStarted: true,
-        isPartial: true, invalidate: vi.fn(), lastComponent: spinner, state,
-      }, second.theme);
+      const reused = renderTaskCall(
+        "Creating tasks…",
+        {
+          toolCallId: "theme-refresh",
+          executionStarted: true,
+          isPartial: true,
+          invalidate: vi.fn(),
+          lastComponent: spinner,
+          state,
+        },
+        second.theme,
+      );
       expect(reused).toBe(spinner);
-      expect(second.calls).toEqual([["accent", "⠋"], ["toolTitle", "Creating tasks…"]]);
-      expect(spinner.render(200).join("\n")).toContain("<toolTitle>Creating tasks…</>");
+      expect(second.calls).toEqual([
+        ["accent", "⠐"],
+        ["toolTitle", "Creating tasks…"],
+      ]);
+      expect(spinner.render(200).join("\n")).toContain(
+        "<toolTitle>Creating tasks…</>",
+      );
       second.calls.length = 0;
       vi.advanceTimersByTime(80);
-      expect(second.calls).toEqual([["accent", "⠙"], ["toolTitle", "Creating tasks…"]]);
-      renderTaskCall("Creating tasks…", { toolCallId: "theme-refresh", executionStarted: true, isPartial: false });
+      expect(second.calls).toEqual([
+        ["accent", "⠰"],
+        ["toolTitle", "Creating tasks…"],
+      ]);
+      renderTaskCall("Creating tasks…", {
+        toolCallId: "theme-refresh",
+        executionStarted: true,
+        isPartial: false,
+      });
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
@@ -756,29 +1075,66 @@ describe("pending spinner theming", () => {
     try {
       const state: any = {};
       const plain = renderTaskCall("Retrieving task…", {
-        toolCallId: "plain-pending", executionStarted: false,
-        isPartial: true, invalidate: vi.fn(), state,
+        toolCallId: "plain-pending",
+        executionStarted: false,
+        isPartial: true,
+        invalidate: vi.fn(),
+        state,
       });
-      expect(plain.render(200).join("\n").trimEnd()).toBe("⠋ Retrieving task…");
+      expect(plain.render(200).join("\n").trimEnd()).toBe("⠐ Retrieving task…");
       vi.advanceTimersByTime(80);
-      expect(plain.render(200).join("\n").trimEnd()).toBe("⠙ Retrieving task…");
-      renderTaskCall("Retrieving task…", { toolCallId: "plain-pending", executionStarted: true, isPartial: false });
+      expect(plain.render(200).join("\n").trimEnd()).toBe("⠰ Retrieving task…");
+      renderTaskCall("Retrieving task…", {
+        toolCallId: "plain-pending",
+        executionStarted: true,
+        isPartial: false,
+      });
 
-      const throwing: any = { fg: () => { throw new Error("theme failed"); } };
+      const throwing: any = {
+        fg: () => {
+          throw new Error("theme failed");
+        },
+      };
       const fallbackState: any = {};
-      const fallback = renderTaskCall("Retrieving task…", {
-        toolCallId: "throw-pending", executionStarted: false,
-        isPartial: true, invalidate: vi.fn(), state: fallbackState,
-      }, throwing);
-      expect(fallback.render(200).join("\n").trimEnd()).toBe("⠋ Retrieving task…");
+      const fallback = renderTaskCall(
+        "Retrieving task…",
+        {
+          toolCallId: "throw-pending",
+          executionStarted: false,
+          isPartial: true,
+          invalidate: vi.fn(),
+          state: fallbackState,
+        },
+        throwing,
+      );
+      expect(fallback.render(200).join("\n").trimEnd()).toBe(
+        "⠐ Retrieving task…",
+      );
       vi.advanceTimersByTime(80);
-      expect(fallback.render(200).join("\n").trimEnd()).toBe("⠙ Retrieving task…");
-      const staticFallback = renderTaskCall("Retrieving task…", {
-        executionStarted: false, isPartial: true, invalidate: vi.fn(), state: {},
-      }, throwing);
-      expect(staticFallback.render(200).join("\n").trimEnd()).toBe("Retrieving task…");
-      expect(renderTaskCall("Retrieving task…").render(200).join("\n").trimEnd()).toBe("Retrieving task…");
-      renderTaskCall("Retrieving task…", { toolCallId: "throw-pending", executionStarted: true, isPartial: false });
+      expect(fallback.render(200).join("\n").trimEnd()).toBe(
+        "⠰ Retrieving task…",
+      );
+      const staticFallback = renderTaskCall(
+        "Retrieving task…",
+        {
+          executionStarted: false,
+          isPartial: true,
+          invalidate: vi.fn(),
+          state: {},
+        },
+        throwing,
+      );
+      expect(staticFallback.render(200).join("\n").trimEnd()).toBe(
+        "Retrieving task…",
+      );
+      expect(
+        renderTaskCall("Retrieving task…").render(200).join("\n").trimEnd(),
+      ).toBe("Retrieving task…");
+      renderTaskCall("Retrieving task…", {
+        toolCallId: "throw-pending",
+        executionStarted: true,
+        isPartial: false,
+      });
       expect(vi.getTimerCount()).toBe(0);
       expect(fallbackState.taskCallSpinner).toBeUndefined();
     } finally {

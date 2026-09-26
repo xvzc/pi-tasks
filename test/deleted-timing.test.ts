@@ -13,7 +13,9 @@ beforeEach(() => {
 
 afterEach(async () => {
   vi.useRealTimers();
-  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(
+    dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+  );
 });
 
 async function freshStore(): Promise<TaskStore> {
@@ -41,7 +43,9 @@ describe("deleted transition timing", () => {
     expect(store.activeTiming()).toEqual({ totalActiveMs: 20_000 });
     expect(await store.archiveTerminalCycle()).toBe(true);
     expect(store.list()).toEqual([]);
-    expect(store.listHistory()).toMatchObject([{ tasks: [{ id: task.id, status: "deleted" }] }]);
+    expect(store.listHistory()).toMatchObject([
+      { tasks: [{ id: task.id, status: "deleted" }] },
+    ]);
     expect(store.activeTiming()).toEqual({ totalActiveMs: 0 });
   });
 
@@ -50,11 +54,17 @@ describe("deleted transition timing", () => {
     const store = await freshStore();
     const running = await store.create({ subject: "running", description: "" });
     const pending = await store.create({ subject: "pending", description: "" });
-    await store.update(running.id, { status: "in_progress", appendLog: "note" });
+    await store.update(running.id, {
+      status: "in_progress",
+      appendLog: "note",
+    });
 
     vi.setSystemTime(T0 + 30_000);
     await store.update(running.id, { status: "paused", appendLog: "pausing" });
-    const deleted = await store.update(running.id, { status: "deleted", appendLog: "note" });
+    const deleted = await store.update(running.id, {
+      status: "deleted",
+      appendLog: "note",
+    });
     expect(deleted).toMatchObject({ status: "deleted", tookMs: 30_000 });
     expect(store.list().map((task) => [task.id, task.status])).toEqual([
       [running.id, "deleted"],
@@ -74,14 +84,20 @@ describe("deleted transition timing", () => {
     vi.setSystemTime(T0 + 20_000);
     await store.update(a.id, { status: "paused", appendLog: "pausing" });
     await store.update(a.id, { status: "deleted", appendLog: "note" });
-    expect(store.activeTiming()).toEqual({ totalActiveMs: 0, activeSince: new Date(T0).toISOString() });
+    expect(store.activeTiming()).toEqual({
+      totalActiveMs: 0,
+      activeSince: new Date(T0).toISOString(),
+    });
 
     vi.setSystemTime(T0 + 70_000);
     await store.update(b.id, { status: "in_progress", appendLog: "note" });
     await store.update(b.id, { status: "completed", appendLog: "note" });
     expect(store.activeTiming()).toEqual({ totalActiveMs: 70_000 });
     const data = JSON.parse(await readFile(store.filePath, "utf8"));
-    expect(data.tasks).toMatchObject([{ id: a.id, status: "deleted" }, { id: b.id, status: "completed" }]);
+    expect(data.tasks).toMatchObject([
+      { id: a.id, status: "deleted" },
+      { id: b.id, status: "completed" },
+    ]);
   });
 
   it("does not disturb a running task when a pending peer becomes deleted", async () => {
@@ -89,10 +105,16 @@ describe("deleted transition timing", () => {
     const store = await freshStore();
     const running = await store.create({ subject: "running", description: "" });
     const removed = await store.create({ subject: "removed", description: "" });
-    await store.update(running.id, { status: "in_progress", appendLog: "note" });
+    await store.update(running.id, {
+      status: "in_progress",
+      appendLog: "note",
+    });
 
     vi.setSystemTime(T0 + 10_000);
     await store.update(removed.id, { status: "deleted", appendLog: "note" });
-    expect(store.activeTiming()).toEqual({ totalActiveMs: 0, activeSince: new Date(T0).toISOString() });
+    expect(store.activeTiming()).toEqual({
+      totalActiveMs: 0,
+      activeSince: new Date(T0).toISOString(),
+    });
   });
 });

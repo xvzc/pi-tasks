@@ -13,7 +13,9 @@ beforeEach(() => {
 
 afterEach(async () => {
   vi.useRealTimers();
-  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(
+    dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+  );
 });
 
 async function freshStore() {
@@ -29,7 +31,11 @@ describe("clearCompleted", () => {
     vi.setSystemTime(T0);
     const store = await freshStore();
     const dep = await store.create({ subject: "dep", description: "" });
-    const main = await store.create({ subject: "main", description: "", blockedBy: [dep.id] });
+    const main = await store.create({
+      subject: "main",
+      description: "",
+      blockedBy: [dep.id],
+    });
     const solo = await store.create({ subject: "solo", description: "" });
     await store.update(dep.id, { status: "in_progress", appendLog: "note" });
     await store.update(dep.id, { status: "completed", appendLog: "note" });
@@ -37,18 +43,22 @@ describe("clearCompleted", () => {
     await store.update(solo.id, { status: "completed", appendLog: "note" });
 
     let writes = 0;
-    const counting = await TaskStore.load(store.filePath, async (path, data: StoreData) => {
-      writes += 1;
-      const { mkdir, rename, writeFile, unlink } = await import("node:fs/promises");
-      const { dirname } = await import("node:path");
-      const { randomUUID } = await import("node:crypto");
-      await mkdir(dirname(path), { recursive: true });
-      const tmp = `${path}.counting.tmp`;
-      void randomUUID;
-      await writeFile(tmp, JSON.stringify(data, null, 2));
-      await rename(tmp, path);
-      await unlink(tmp).catch(() => {});
-    });
+    const counting = await TaskStore.load(
+      store.filePath,
+      async (path, data: StoreData) => {
+        writes += 1;
+        const { mkdir, rename, writeFile, unlink } =
+          await import("node:fs/promises");
+        const { dirname } = await import("node:path");
+        const { randomUUID } = await import("node:crypto");
+        await mkdir(dirname(path), { recursive: true });
+        const tmp = `${path}.counting.tmp`;
+        void randomUUID;
+        await writeFile(tmp, JSON.stringify(data, null, 2));
+        await rename(tmp, path);
+        await unlink(tmp).catch(() => {});
+      },
+    );
     expect(counting.list()).toHaveLength(3);
 
     const removed = await counting.clearCompleted();
@@ -117,7 +127,11 @@ describe("clearCompleted", () => {
   it("leaves memory and disk unchanged when persistence fails", async () => {
     const setup = await freshStore();
     const dep = await setup.create({ subject: "dep", description: "" });
-    await setup.create({ subject: "main", description: "", blockedBy: [dep.id] });
+    await setup.create({
+      subject: "main",
+      description: "",
+      blockedBy: [dep.id],
+    });
     await setup.update(dep.id, { status: "in_progress", appendLog: "note" });
     await setup.update(dep.id, { status: "completed", appendLog: "note" });
     const beforeDisk = await readFile(setup.filePath, "utf8");
@@ -126,7 +140,9 @@ describe("clearCompleted", () => {
       throw new Error("simulated write failure");
     });
     const before = store.list();
-    await expect(store.clearCompleted()).rejects.toThrow(/simulated write failure/);
+    await expect(store.clearCompleted()).rejects.toThrow(
+      /simulated write failure/,
+    );
     expect(store.list()).toEqual(before);
     expect(store.get(2)?.blockedBy).toEqual([1]);
     expect(await readFile(setup.filePath, "utf8")).toBe(beforeDisk);
@@ -148,35 +164,55 @@ describe("clearAll", () => {
     let writes = 0;
     const { mkdir, rename, writeFile } = await import("node:fs/promises");
     const { dirname } = await import("node:path");
-    const counting = await TaskStore.load(store.filePath, async (path, data: StoreData) => {
-      writes += 1;
-      await mkdir(dirname(path), { recursive: true });
-      const tmp = `${path}.clearall.tmp`;
-      await writeFile(tmp, JSON.stringify(data, null, 2));
-      await rename(tmp, path);
-    });
+    const counting = await TaskStore.load(
+      store.filePath,
+      async (path, data: StoreData) => {
+        writes += 1;
+        await mkdir(dirname(path), { recursive: true });
+        const tmp = `${path}.clearall.tmp`;
+        await writeFile(tmp, JSON.stringify(data, null, 2));
+        await rename(tmp, path);
+      },
+    );
     const removed = await counting.clearAll();
     expect(removed).toBe(2);
     expect(writes).toBe(1);
     expect(counting.list()).toEqual([]);
     expect(counting.activeTiming()).toEqual({ totalActiveMs: 0 });
     const data = JSON.parse(await readFile(store.filePath, "utf8"));
-    expect(data).toMatchObject({ version: 2, nextId: 3, tasks: [], history: [], totalActiveMs: 0 });
+    expect(data).toMatchObject({
+      version: 2,
+      nextId: 3,
+      tasks: [],
+      history: [],
+      totalActiveMs: 0,
+    });
     const next = await counting.create({ subject: "fresh", description: "" });
     expect(next.id).toBe(3);
   });
 
   it("preserves previously archived cycles", async () => {
     const store = await freshStore();
-    const completed = await store.create({ subject: "archived", description: "" });
-    await store.update(completed.id, { status: "in_progress", appendLog: "note" });
-    await store.update(completed.id, { status: "completed", appendLog: "note" });
+    const completed = await store.create({
+      subject: "archived",
+      description: "",
+    });
+    await store.update(completed.id, {
+      status: "in_progress",
+      appendLog: "note",
+    });
+    await store.update(completed.id, {
+      status: "completed",
+      appendLog: "note",
+    });
     expect(await store.archiveTerminalCycle()).toBe(true);
     await store.create({ subject: "active", description: "" });
 
     expect(await store.clearAll()).toBe(1);
     expect(store.list()).toEqual([]);
-    expect(store.listHistory()).toMatchObject([{ tasks: [{ id: 1, subject: "archived" }] }]);
+    expect(store.listHistory()).toMatchObject([
+      { tasks: [{ id: 1, subject: "archived" }] },
+    ]);
     expect((await TaskStore.load(store.filePath)).listHistory()).toMatchObject([
       { tasks: [{ id: 1, subject: "archived" }] },
     ]);

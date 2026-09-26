@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdtemp } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { configFilePath, DEFAULT_CONFIG, loadPiTasksConfig } from "../src/config.js";
+import {
+  configFilePath,
+  DEFAULT_CONFIG,
+  loadPiTasksConfig,
+} from "../src/config.js";
 
 const dirs: string[] = [];
 let savedEnv: string | undefined;
@@ -17,7 +21,9 @@ beforeEach(() => {
 afterEach(async () => {
   if (hadEnv) process.env.PI_CODING_AGENT_DIR = savedEnv as string;
   else delete process.env.PI_CODING_AGENT_DIR;
-  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(
+    dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+  );
 });
 
 async function agentDir(): Promise<string> {
@@ -39,7 +45,9 @@ describe("config file path", () => {
   });
 
   it("accepts an explicit agent dir", () => {
-    expect(configFilePath("/tmp/agent")).toBe(join("/tmp/agent", "extensions", "pi-tasks.json"));
+    expect(configFilePath("/tmp/agent")).toBe(
+      join("/tmp/agent", "extensions", "pi-tasks.json"),
+    );
   });
 });
 
@@ -47,7 +55,9 @@ describe("loadPiTasksConfig", () => {
   it("uses defaults when the file is missing without warning", async () => {
     const dir = await agentDir();
     const { messages, warn } = collector();
-    expect(loadPiTasksConfig(join(dir, "extensions", "pi-tasks.json"), warn)).toEqual(DEFAULT_CONFIG);
+    expect(
+      loadPiTasksConfig(join(dir, "extensions", "pi-tasks.json"), warn),
+    ).toEqual(DEFAULT_CONFIG);
     expect(messages).toEqual([]);
   });
 
@@ -56,88 +66,11 @@ describe("loadPiTasksConfig", () => {
     const { warn } = collector();
     const loaded = loadPiTasksConfig(join(dir, "missing.json"), warn);
     loaded.maxAttempts = 0;
-    loaded.glyphs.pending.character = "x";
     expect(DEFAULT_CONFIG).toEqual({
       maxAttempts: 8,
-      enableAssignee: false,
-      glyphs: {
-        inProgress: { character: "◌", frames: ["◌", "○", "⨀", "◉", "●", "◉", "⨀", "○", "◌"] },
-        pending: { character: "◌", retriedCharacter: "■" },
-        completed: { character: "●", awaitingReviewCharacter: "○" },
-        paused: { character: "⏸" },
-        deleted: { character: "⌫" } } });
-  });
-
-  it("merges a partial nested glyph config with defaults", async () => {
-    const dir = await agentDir();
-    const path = join(dir, "extensions", "pi-tasks.json");
-    await mkdir(join(dir, "extensions"), { recursive: true });
-    await writeFile(path, JSON.stringify({ glyphs: { inProgress: { character: "▶" } } }));
-    const { messages, warn } = collector();
-    const config = loadPiTasksConfig(path, warn);
-    expect(config).toEqual({
-      maxAttempts: 8,
-      enableAssignee: false,
-      glyphs: {
-        inProgress: { character: "▶", frames: ["▶", " "] },
-        pending: { character: "◌", retriedCharacter: "■" },
-        completed: { character: "●", awaitingReviewCharacter: "○" },
-        paused: { character: "⏸" },
-        deleted: { character: "⌫" } } });
-    expect(messages).toEqual([]);
-  });
-
-  it("merges review glyphs and animation frames per field", async () => {
-    const dir = await agentDir();
-    const path = join(dir, "extensions", "pi-tasks.json");
-    await mkdir(join(dir, "extensions"), { recursive: true });
-    await writeFile(path, JSON.stringify({
-      glyphs: {
-        inProgress: { character: "legacy", frames: ["1", "2"] },
-        pending: { retriedCharacter: "R" },
-        completed: { awaitingReviewCharacter: "A" } } }));
-    const { messages, warn } = collector();
-    const config = loadPiTasksConfig(path, warn);
-    expect(config.glyphs.inProgress).toEqual({ character: "legacy", frames: ["1", "2"] });
-    expect(config.glyphs.pending).toEqual({ character: "◌", retriedCharacter: "R" });
-    expect(config.glyphs.completed).toEqual({ character: "●", awaitingReviewCharacter: "A" });
-    expect(messages).toEqual([]);
-  });
-
-  it("preserves character-only intent when the explicit character equals the default", async () => {
-    const dir = await agentDir();
-    const path = join(dir, "default-character.json");
-    await writeFile(path, JSON.stringify({ glyphs: { inProgress: { character: "⠁" } } }));
-    const { messages, warn } = collector();
-    const config = loadPiTasksConfig(path, warn);
-    expect(config.glyphs.inProgress).toEqual({ character: "⠁", frames: ["⠁", " "] });
-    expect(messages).toEqual([]);
-  });
-
-  it("normalizes explicit default-valued pending/completed character overrides", async () => {
-    const dir = await agentDir();
-    const path = join(dir, "default-status-characters.json");
-    await writeFile(path, JSON.stringify({
-      glyphs: {
-        pending: { character: "◌" },
-        completed: { character: "●" } } }));
-    const { messages, warn } = collector();
-    const config = loadPiTasksConfig(path, warn);
-    expect(config.glyphs.pending).toEqual({ character: "◌", retriedCharacter: "◌" });
-    expect(config.glyphs.completed).toEqual({ character: "●", awaitingReviewCharacter: "●" });
-    expect(messages).toEqual([]);
-  });
-
-  it("rejects mixed-width frames and falls back to the default frames even when character is present", async () => {
-    const dir = await agentDir();
-    const path = join(dir, "mixed-width-frames.json");
-    await writeFile(path, JSON.stringify({ glyphs: { inProgress: { character: "▶", frames: ["x", "界"] } } }));
-    const { messages, warn } = collector();
-    const config = loadPiTasksConfig(path, warn);
-    expect(config.glyphs.inProgress.character).toBe("▶");
-    expect(config.glyphs.inProgress.frames).toEqual(DEFAULT_CONFIG.glyphs.inProgress.frames);
-    expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain("equal-width");
+      enableAssignment: false,
+      injectGuidelines: true,
+    });
   });
 
   it("accepts maxAttempts 0 as the unlimited sentinel", async () => {
@@ -148,7 +81,7 @@ describe("loadPiTasksConfig", () => {
     const { messages, warn } = collector();
     const config = loadPiTasksConfig(path, warn);
     expect(config.maxAttempts).toBe(0);
-    expect(config.glyphs).toEqual(DEFAULT_CONFIG.glyphs);
+    expect(config).toEqual({ ...DEFAULT_CONFIG, maxAttempts: 0 });
     expect(messages).toEqual([]);
   });
 
@@ -167,7 +100,10 @@ describe("loadPiTasksConfig", () => {
     const dir = await agentDir();
     const { messages, warn } = collector();
     const overPath = join(dir, "unsafe.json");
-    await writeFile(overPath, JSON.stringify({ maxAttempts: Number.MAX_SAFE_INTEGER + 1 }));
+    await writeFile(
+      overPath,
+      JSON.stringify({ maxAttempts: Number.MAX_SAFE_INTEGER + 1 }),
+    );
     expect(loadPiTasksConfig(overPath, warn).maxAttempts).toBe(8);
     expect(messages).toHaveLength(1);
     expect(messages[0]).toContain(overPath);
@@ -194,77 +130,32 @@ describe("loadPiTasksConfig", () => {
       path,
       JSON.stringify({
         maxAttempts: -1,
-        glyphs: {
-          inProgress: { character: "▶" },
-          pending: { character: "" },
-          completed: "x" } }),
+        enableAssignment: "yes",
+      }),
     );
     const { messages, warn } = collector();
     expect(loadPiTasksConfig(path, warn)).toEqual({
       maxAttempts: 8,
-      enableAssignee: false,
-      glyphs: {
-        inProgress: { character: "▶", frames: ["▶", " "] },
-        pending: { character: "◌", retriedCharacter: "■" },
-        completed: { character: "●", awaitingReviewCharacter: "○" },
-        paused: { character: "⏸" },
-        deleted: { character: "⌫" } } });
-    expect(messages.length).toBeGreaterThanOrEqual(3);
+      enableAssignment: false,
+      injectGuidelines: true,
+    });
+    expect(messages).toHaveLength(2);
     for (const message of messages) expect(message).toContain(path);
   });
 
-  it("rejects non-object roots, non-object glyphs, and invalid integer shapes", async () => {
+  it("rejects non-object roots and invalid integer shapes", async () => {
     const dir = await agentDir();
     const { messages, warn } = collector();
     const arrayPath = join(dir, "array.json");
     await writeFile(arrayPath, "[1, 2]");
     expect(loadPiTasksConfig(arrayPath, warn)).toEqual(DEFAULT_CONFIG);
 
-    const glyphsPath = join(dir, "glyphs.json");
-    await writeFile(glyphsPath, JSON.stringify({ glyphs: [] }));
-    expect(loadPiTasksConfig(glyphsPath, warn)).toEqual(DEFAULT_CONFIG);
-
     for (const maxAttempts of [1.5, Number.MAX_SAFE_INTEGER + 1, "9", -2]) {
       const invalidPath = join(dir, `invalid-${String(maxAttempts)}.json`);
       await writeFile(invalidPath, JSON.stringify({ maxAttempts }));
       expect(loadPiTasksConfig(invalidPath, warn).maxAttempts).toBe(8);
     }
-    expect(messages.length).toBeGreaterThanOrEqual(6);
-  });
-
-  it("rejects glyph characters with line breaks and zero-width/combining-only content", async () => {
-    const dir = await agentDir();
-    const path = join(dir, "extensions", "pi-tasks.json");
-    await mkdir(join(dir, "extensions"), { recursive: true });
-    await writeFile(
-      path,
-      JSON.stringify({
-        glyphs: {
-          inProgress: { character: "bad\nglyph" },
-          pending: { character: "\u0301" },
-          completed: { character: "\u200b" } } }),
-    );
-    const { messages, warn } = collector();
-    const config = loadPiTasksConfig(path, warn);
-    expect(config.glyphs).toEqual(DEFAULT_CONFIG.glyphs);
-    expect(messages).toHaveLength(3);
-    for (const message of messages) expect(message).toContain(path);
-  });
-
-  it("permits ordinary multi-character and wide printable glyphs", async () => {
-    const dir = await agentDir();
-    const path = join(dir, "extensions", "pi-tasks.json");
-    await mkdir(join(dir, "extensions"), { recursive: true });
-    await writeFile(
-      path,
-      JSON.stringify({ glyphs: { inProgress: { character: ">>" }, pending: { character: "🔥" } } }),
-    );
-    const { messages, warn } = collector();
-    const config = loadPiTasksConfig(path, warn);
-    expect(config.glyphs.inProgress.character).toBe(">>");
-    expect(config.glyphs.pending.character).toBe("🔥");
-    expect(config.glyphs.completed).toEqual(DEFAULT_CONFIG.glyphs.completed);
-    expect(messages).toEqual([]);
+    expect(messages.length).toBeGreaterThanOrEqual(5);
   });
 
   it("warns on unknown keys while preserving recognized valid fields", async () => {
@@ -277,22 +168,14 @@ describe("loadPiTasksConfig", () => {
         defaultMaxAttempt: 3,
         defaultMaxAttempts: 9,
         maxAttempts: 5,
-        glyphs: {
-          in_progress: { character: "x" },
-          inProgress: { character: "▶", colour: "red" },
-          pending: { character: "○" } } }),
+      }),
     );
     const { messages, warn } = collector();
     const config = loadPiTasksConfig(path, warn);
     expect(config.maxAttempts).toBe(5);
-    expect(config.glyphs.inProgress.character).toBe("▶");
-    expect(config.glyphs.pending.character).toBe("○");
-    expect(config.glyphs.completed).toEqual(DEFAULT_CONFIG.glyphs.completed);
-    expect(messages).toHaveLength(4);
+    expect(messages).toHaveLength(2);
     expect(messages.join("\n")).toContain("defaultMaxAttempt");
     expect(messages.join("\n")).toContain("defaultMaxAttempts");
-    expect(messages.join("\n")).toContain("in_progress");
-    expect(messages.join("\n")).toContain("colour");
     for (const message of messages) expect(message).toContain(path);
   });
 
@@ -319,39 +202,98 @@ describe("loadPiTasksConfig", () => {
     expect(messages).toEqual([]);
   });
 
-  it("defaults enableAssignee to false", async () => {
-    expect(DEFAULT_CONFIG.enableAssignee).toBe(false);
+  it("defaults enableAssignment to false", async () => {
+    expect(DEFAULT_CONFIG.enableAssignment).toBe(false);
     const dir = await agentDir();
     const { messages, warn } = collector();
-    expect(loadPiTasksConfig(join(dir, "missing.json"), warn).enableAssignee).toBe(false);
+    expect(
+      loadPiTasksConfig(join(dir, "missing.json"), warn).enableAssignment,
+    ).toBe(false);
     expect(messages).toEqual([]);
   });
 
-  it("accepts enableAssignee true", async () => {
+  it("accepts enableAssignment true", async () => {
+    const dir = await agentDir();
+    const path = join(dir, "extensions", "pi-tasks.json");
+    await mkdir(join(dir, "extensions"), { recursive: true });
+    await writeFile(path, JSON.stringify({ enableAssignment: true }));
+    const { messages, warn } = collector();
+    const config = loadPiTasksConfig(path, warn);
+    expect(config.enableAssignment).toBe(true);
+    expect(config.maxAttempts).toBe(8);
+    expect(messages).toEqual([]);
+  });
+
+  it("warns and ignores the unknown enableAssignee key like any unsupported key", async () => {
     const dir = await agentDir();
     const path = join(dir, "extensions", "pi-tasks.json");
     await mkdir(join(dir, "extensions"), { recursive: true });
     await writeFile(path, JSON.stringify({ enableAssignee: true }));
     const { messages, warn } = collector();
-    const config = loadPiTasksConfig(path, warn);
-    expect(config.enableAssignee).toBe(true);
-    expect(config.maxAttempts).toBe(8);
-    expect(messages).toEqual([]);
+    expect(loadPiTasksConfig(path, warn).enableAssignment).toBe(false);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('unknown config key "enableAssignee"');
   });
 
-  it("warns and falls back to false for non-boolean enableAssignee", async () => {
+  it("warns and falls back to false for non-boolean enableAssignment", async () => {
     const dir = await agentDir();
     const { messages, warn } = collector();
-    for (const enableAssignee of ["yes", 1, 0, null, {}, []]) {
-      const invalidPath = join(dir, `assignee-${JSON.stringify(enableAssignee)}.json`);
-      await writeFile(invalidPath, JSON.stringify({ enableAssignee }));
+    for (const enableAssignment of ["yes", 1, 0, null, {}, []]) {
+      const invalidPath = join(
+        dir,
+        `assignment-${JSON.stringify(enableAssignment)}.json`,
+      );
+      await writeFile(invalidPath, JSON.stringify({ enableAssignment }));
       const config = loadPiTasksConfig(invalidPath, warn);
-      expect(config.enableAssignee).toBe(false);
+      expect(config.enableAssignment).toBe(false);
       expect(config.maxAttempts).toBe(8);
     }
     expect(messages).toHaveLength(6);
     for (const message of messages) {
-      expect(message).toContain("enableAssignee");
+      expect(message).toContain("enableAssignment");
+      expect(message).toContain("boolean");
+    }
+  });
+
+  it("defaults injectGuidelines to true", async () => {
+    expect(DEFAULT_CONFIG.injectGuidelines).toBe(true);
+    const dir = await agentDir();
+    const { messages, warn } = collector();
+    expect(
+      loadPiTasksConfig(join(dir, "missing.json"), warn).injectGuidelines,
+    ).toBe(true);
+    expect(messages).toEqual([]);
+  });
+
+  it("accepts injectGuidelines true and false", async () => {
+    const dir = await agentDir();
+    const { messages, warn } = collector();
+    for (const injectGuidelines of [true, false]) {
+      const path = join(dir, `guidelines-${String(injectGuidelines)}.json`);
+      await writeFile(path, JSON.stringify({ injectGuidelines }));
+      const config = loadPiTasksConfig(path, warn);
+      expect(config.injectGuidelines).toBe(injectGuidelines);
+      expect(config.maxAttempts).toBe(8);
+    }
+    expect(messages).toEqual([]);
+  });
+
+  it("warns and falls back to true for non-boolean injectGuidelines", async () => {
+    const dir = await agentDir();
+    const { messages, warn } = collector();
+    for (const injectGuidelines of ["yes", 1, 0, null, {}, []]) {
+      const invalidPath = join(
+        dir,
+        `guidelines-${JSON.stringify(injectGuidelines)}.json`,
+      );
+      await writeFile(invalidPath, JSON.stringify({ injectGuidelines }));
+      const config = loadPiTasksConfig(invalidPath, warn);
+      expect(config.injectGuidelines).toBe(true);
+      expect(config.maxAttempts).toBe(8);
+    }
+    expect(messages).toHaveLength(6);
+    for (const message of messages) {
+      expect(message).toContain("injectGuidelines");
       expect(message).toContain("boolean");
     }
   });
@@ -362,39 +304,5 @@ describe("loadPiTasksConfig", () => {
     expect(loadPiTasksConfig(dir, warn)).toEqual(DEFAULT_CONFIG);
     expect(messages).toHaveLength(1);
     expect(messages[0]).toContain(dir);
-  });
-
-  it("has no defaultColor in the config shape", async () => {
-    const dir = await agentDir();
-    const { warn } = collector();
-    const config = loadPiTasksConfig(join(dir, "missing.json"), warn);
-    for (const glyph of Object.values(config.glyphs)) {
-      expect("defaultColor" in glyph).toBe(false);
-    }
-  });
-
-  it("tolerates legacy glyph defaultColor keys without crashing", async () => {
-    const dir = await agentDir();
-    const path = join(dir, "extensions", "pi-tasks.json");
-    await mkdir(join(dir, "extensions"), { recursive: true });
-    await writeFile(
-      path,
-      JSON.stringify({
-        glyphs: {
-          inProgress: { character: "▶", defaultColor: "red" },
-          pending: { character: "○", defaultColor: "blue" },
-          completed: { character: "✔", defaultColor: "yellow" },
-          paused: { character: "✖", defaultColor: "red" } } }),
-    );
-    const { messages, warn } = collector();
-    const config = loadPiTasksConfig(path, warn);
-    expect(config.glyphs.inProgress.character).toBe("▶");
-    expect(config.glyphs.pending.character).toBe("○");
-    expect(config.glyphs.completed.character).toBe("✔");
-    expect(config.glyphs.paused.character).toBe("✖");
-    for (const glyph of Object.values(config.glyphs)) {
-      expect("defaultColor" in glyph).toBe(false);
-    }
-    for (const message of messages) expect(message).toContain(path);
   });
 });

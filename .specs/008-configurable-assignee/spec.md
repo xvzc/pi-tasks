@@ -62,7 +62,7 @@
 
 - E1: non-boolean `enableAssignee` warns:
   `pi-tasks: invalid config at <path>, using default enableAssignee (false):
-  expected a boolean, got <json>.`
+expected a boolean, got <json>.`
 - No new tool/store errors; schema violations remain host-side.
 
 ## Edge Cases
