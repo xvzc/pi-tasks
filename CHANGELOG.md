@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/xvzc/pi-tasks/compare/v1.2.0...v1.3.0) (2026-09-26)
+
+
+### Features
+
+* standardize task tool rendering labels ([ec95955](https://github.com/xvzc/pi-tasks/commit/ec959555e12de20f19978aaf6d9432db75306345))
+* standardize task tool rendering labels ([9bd38c6](https://github.com/xvzc/pi-tasks/commit/9bd38c66de588ea500485092051a45a95082582c))
+
 ## [1.2.0](https://github.com/xvzc/pi-tasks/compare/v1.1.0...v1.2.0) (2026-09-26)
 
 
