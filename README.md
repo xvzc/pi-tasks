@@ -55,7 +55,8 @@ when the extension registers:
 
 ## Stores
 
-One file per main session: `<cwd>/.pi/tasks/tasks-{sanitizedSessionId}.json`
+One file per main session: `$PI_CODING_AGENT_DIR/tasks/tasks-{sanitizedSessionId}.json`
+(resolved as `join(getAgentDir(), "tasks", ...)`, defaulting to `~/.pi/agent/tasks/`)
 with envelope `{ version: 2, nextId, tasks, history, totalActiveMs, activeSince? }`. `tasks` is the active
 list; `history` is an append-only array of completed cycles containing their task snapshots, logs,
 archive timestamp, and accumulated active time. Version-1 envelopes remain readable and upgrade on
@@ -75,14 +76,14 @@ load timestamp, matching the global `activeSince` load-time behavior)
 and legacy completed tasks fall back to frozen `createdAt`→`updatedAt` spans.
 
 Session lifecycle (`session_start`, resolved from `ctx.sessionManager.getSessionId()`
-and the current cwd): fires on `startup`, `reload`, `resume`, `new`, and `fork`,
+and the agent dir): fires on `startup`, `reload`, `resume`, `new`, and `fork`,
 and immediately loads the current session's store to refresh the widget — or
 clear it when the session has no tasks. Only the current session's file is
 read, so `new`/`fork` sessions start with a cleared widget and never inherit
 parent-session tasks. Load or refresh failures never throw and never delete or
 reset the persisted file.
 
-Turn lifecycle (`turn_start`, same `ctx.sessionManager.getSessionId()` + cwd
+Turn lifecycle (`turn_start`, same `ctx.sessionManager.getSessionId()` + agent-dir
 store): before refreshing the widget, atomically moves a non-empty terminal
 active list (every task is `completed` or `deleted`) into `history`, then clears
 active tasks and timing while preserving `nextId`. The next task therefore

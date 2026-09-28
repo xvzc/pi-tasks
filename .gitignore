@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 .worktrees/
+.devenv/
 .pi/
 *.tsbuildinfo
 .DS_Store

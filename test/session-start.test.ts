@@ -141,7 +141,7 @@ describe("session_start widget restoration", () => {
   });
 
   it.each(["startup", "reload", "resume"] as const)(
-    "restores the same cwd+session store on %s",
+    "restores the same agent-dir+session store on %s",
     async (reason) => {
       const captured = capture();
       registerExtension(captured.pi);
@@ -157,7 +157,7 @@ describe("session_start widget restoration", () => {
       expect(last.key).toBe("tasks");
       expect(typeof last.content).toBe("function");
       // Restoration reads without rewriting the persisted file.
-      expect(existsSync(taskFilePath(cwd, sessionId))).toBe(true);
+      expect(existsSync(taskFilePath(sessionId))).toBe(true);
     },
   );
 
@@ -182,7 +182,7 @@ describe("session_start widget restoration", () => {
       .execute("list", {}, undefined, undefined, ctx);
     expect(JSON.parse(listed.content[0].text)).toEqual([]);
     expect(
-      JSON.parse(await readFile(taskFilePath(cwd, sessionId), "utf8")),
+      JSON.parse(await readFile(taskFilePath(sessionId), "utf8")),
     ).toMatchObject({
       version: 2,
       history: [
@@ -206,7 +206,7 @@ describe("session_start widget restoration", () => {
     const last = widgets[widgets.length - 1];
     expect(last.key).toBe("tasks");
     expect(last.content).toBeUndefined();
-    expect(existsSync(taskFilePath(cwd, "brand-new-session"))).toBe(false);
+    expect(existsSync(taskFilePath("brand-new-session"))).toBe(false);
   });
 
   it("keeps session isolation: another session id restores nothing", async () => {
@@ -224,7 +224,7 @@ describe("session_start widget restoration", () => {
     const last = widgets[widgets.length - 1];
     expect(last.key).toBe("tasks");
     expect(last.content).toBeUndefined();
-    expect(existsSync(taskFilePath(cwd, "session-b"))).toBe(false);
+    expect(existsSync(taskFilePath("session-b"))).toBe(false);
   });
 
   it.each(["new", "fork"] as const)(
@@ -234,10 +234,7 @@ describe("session_start widget restoration", () => {
       registerExtension(captured.pi);
       const cwd = await freshCwd();
       await seedTask(cwd, "parent-session");
-      const beforeDisk = await readFile(
-        taskFilePath(cwd, "parent-session"),
-        "utf8",
-      );
+      const beforeDisk = await readFile(taskFilePath("parent-session"), "utf8");
 
       const { ctx, widgets } = sessionCtx(cwd, "child-session");
       await captured.sessionStart?.(
@@ -252,8 +249,8 @@ describe("session_start widget restoration", () => {
       const last = widgets[widgets.length - 1];
       expect(last.key).toBe("tasks");
       expect(last.content).toBeUndefined();
-      expect(existsSync(taskFilePath(cwd, "child-session"))).toBe(false);
-      expect(await readFile(taskFilePath(cwd, "parent-session"), "utf8")).toBe(
+      expect(existsSync(taskFilePath("child-session"))).toBe(false);
+      expect(await readFile(taskFilePath("parent-session"), "utf8")).toBe(
         beforeDisk,
       );
     },
@@ -300,7 +297,7 @@ describe("session_start widget restoration", () => {
     registerExtension(captured.pi);
     const cwd = await freshCwd();
     const sessionId = "corrupt-session";
-    const path = taskFilePath(cwd, sessionId);
+    const path = taskFilePath(sessionId);
     await seedTask(cwd, sessionId);
     await writeFile(path, "not valid json{{{");
 
