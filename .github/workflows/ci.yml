@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   commitlint:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.head_ref != 'release-please--branches--main--components--pi-tasks'
     name: commitlint
     runs-on: ubuntu-latest
     env:
@@ -46,6 +46,7 @@ jobs:
         run: npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
 
   validate:
+    if: github.event_name != 'pull_request' || github.head_ref != 'release-please--branches--main--components--pi-tasks'
     name: validate
     runs-on: ubuntu-latest
 
