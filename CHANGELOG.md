@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/xvzc/pi-tasks/compare/v1.4.0...v1.4.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* remove English-only task description guidance ([23d3a30](https://github.com/xvzc/pi-tasks/commit/23d3a3044c47d5d5bacb1102b00672793051fa44))
+
 ## [1.4.0](https://github.com/xvzc/pi-tasks/compare/v1.3.0...v1.4.0) (2026-09-28)
 
 
