@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/xvzc/pi-tasks/compare/v1.3.0...v1.4.0) (2026-09-28)
+
+
+### Features
+
+* store session tasks in agent directory ([ae67e02](https://github.com/xvzc/pi-tasks/commit/ae67e029cd03e30e6772adcb7cdde4f78c3d3d78))
+* store session tasks in agent directory ([4cd8c94](https://github.com/xvzc/pi-tasks/commit/4cd8c94071224d7a4af2fe85d0d25d7a35c1c4d1))
+
 ## [1.3.0](https://github.com/xvzc/pi-tasks/compare/v1.2.0...v1.3.0) (2026-09-26)
 
 
