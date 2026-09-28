@@ -113,7 +113,7 @@ const CreateCommonProperties = {
   subject: Type.String({ description: "Short, specific task title." }),
   description: Type.String({
     description:
-      "Task detail. Include scope, expected output, acceptance checks, and relevant constraints or stop conditions. Write in English unless governing instructions require another language. Never include secrets.",
+      "Task detail. Include scope, expected output, acceptance checks, and relevant constraints or stop conditions. Never include secrets.",
   }),
   blockedBy: Type.Optional(CreateBlockedBy),
   blockedByRefs: Type.Optional(
