@@ -1,7 +1,8 @@
 /**
  * Per-main-session file-backed task store.
  *
- * File layout: `<cwd>/.pi/tasks/tasks-{sanitizedSessionId}.json`
+ * File layout: `$PI_CODING_AGENT_DIR/tasks/tasks-{sanitizedSessionId}.json`
+ * (resolved via `getAgentDir()`).
  * Envelope: `{ version: 2, nextId, tasks, history }` (version 1 remains readable).
  *
  * Rules:
@@ -25,6 +26,7 @@ import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_CONFIG } from "./config.js";
 import {
   ALLOWED_TRANSITIONS,
@@ -52,14 +54,12 @@ export function sanitizeSessionId(sessionId: string): string {
   return `${readable}-${digest}`;
 }
 
-/** Resolve the per-session store file for a working directory + session ID. */
-export function taskFilePath(cwd: string, sessionId: string): string {
-  return join(
-    cwd,
-    ".pi",
-    "tasks",
-    `tasks-${sanitizeSessionId(sessionId)}.json`,
-  );
+/** Resolve the per-session store file for a session ID (`$PI_CODING_AGENT_DIR/tasks/`). */
+export function taskFilePath(
+  sessionId: string,
+  agentDir: string = getAgentDir(),
+): string {
+  return join(agentDir, "tasks", `tasks-${sanitizeSessionId(sessionId)}.json`);
 }
 
 export function nowIso(): string {
@@ -1506,10 +1506,10 @@ export interface TurnStartResult {
  * preserved; non-terminal and empty lists are left untouched.
  */
 export async function turnStartStore(
-  cwd: string,
   sessionId: string,
+  agentDir: string = getAgentDir(),
 ): Promise<TurnStartResult> {
-  const store = await TaskStore.load(taskFilePath(cwd, sessionId));
+  const store = await TaskStore.load(taskFilePath(sessionId, agentDir));
   const cleaned = await store.archiveTerminalCycle();
   return { store, cleaned };
 }

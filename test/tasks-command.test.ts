@@ -1,13 +1,25 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import registerExtension, { tasksMenuLabels } from "../src/index.js";
 import { TaskStore } from "../src/store.js";
 
 const dirs: string[] = [];
+let savedAgentDir: string | undefined;
+let hadAgentDir = false;
+
+beforeEach(async () => {
+  hadAgentDir = "PI_CODING_AGENT_DIR" in process.env;
+  savedAgentDir = process.env.PI_CODING_AGENT_DIR;
+  const agentDir = await mkdtemp(join(tmpdir(), "pi-tasks-cmd-agent-"));
+  dirs.push(agentDir);
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+});
 
 afterEach(async () => {
+  if (hadAgentDir) process.env.PI_CODING_AGENT_DIR = savedAgentDir as string;
+  else delete process.env.PI_CODING_AGENT_DIR;
   await Promise.all(
     dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
   );
@@ -202,7 +214,7 @@ describe("tasks menu", () => {
     await commands.get("tasks").handler("", ctx);
     expect(notifications).toEqual([]);
     const { TaskStore: Store, taskFilePath } = await import("../src/store.js");
-    const reloaded = await Store.load(taskFilePath(cwd, "tasks-command"));
+    const reloaded = await Store.load(taskFilePath("tasks-command"));
     expect(reloaded.list()).toHaveLength(2);
   });
 
@@ -243,9 +255,9 @@ describe("tasks menu", () => {
     expect(last.key).toBe("tasks");
     expect(last.content).toBeUndefined();
     const { TaskStore: Store, taskFilePath } = await import("../src/store.js");
-    expect(
-      (await Store.load(taskFilePath(cwd, "tasks-command"))).list(),
-    ).toEqual([]);
+    expect((await Store.load(taskFilePath("tasks-command"))).list()).toEqual(
+      [],
+    );
   });
 
   it("no-ops with a notification when there are no tasks at all", async () => {
@@ -276,7 +288,7 @@ describe("tasks menu", () => {
     );
     const { taskFilePath } = await import("../src/store.js");
     expect(
-      (await TaskStore.load(taskFilePath(cwd, "tasks-command"))).list(),
+      (await TaskStore.load(taskFilePath("tasks-command"))).list(),
     ).toHaveLength(2);
   });
 });

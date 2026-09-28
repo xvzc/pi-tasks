@@ -772,8 +772,8 @@ describe("tool behavior", () => {
     const captured = capture();
     registerExtension(captured.pi);
     const { tools } = captured;
-    const { cwd, ctx, widgets } = await freshCtx();
-    const path = taskFilePath(cwd, "tools-session");
+    const { ctx, widgets } = await freshCtx();
+    const path = taskFilePath("tools-session");
 
     await tools
       .get("task_create")
@@ -838,8 +838,8 @@ describe("tool behavior", () => {
     const captured = capture();
     registerExtension(captured.pi);
     const { tools } = captured;
-    const { cwd, ctx, widgets } = await freshCtx();
-    const path = taskFilePath(cwd, "tools-session");
+    const { ctx, widgets } = await freshCtx();
+    const path = taskFilePath("tools-session");
 
     await tools
       .get("task_create")

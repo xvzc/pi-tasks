@@ -256,9 +256,7 @@ describe("opaque assignment owners", () => {
       expect(result.isError).toBe(true);
     }
     expect(
-      (
-        await TaskStore.load(taskFilePath(ctx.cwd, "invalid-assignment"))
-      ).list(),
+      (await TaskStore.load(taskFilePath("invalid-assignment"))).list(),
     ).toEqual([]);
   });
 
@@ -593,9 +591,7 @@ describe("enableAssignment persisted data", () => {
     expect(JSON.parse(gotten.content[0].text)).toMatchObject({
       assignment: { delegate: true, owner: "api" },
     });
-    const store = await TaskStore.load(
-      taskFilePath(ctx.cwd, "assignment-compat"),
-    );
+    const store = await TaskStore.load(taskFilePath("assignment-compat"));
     expect(store.get(1)).toMatchObject({
       assignment: { delegate: true, owner: "api" },
     });
@@ -632,7 +628,7 @@ describe("enableAssignment persisted data", () => {
       ctx,
     );
     const before = await readFile(
-      taskFilePath(ctx.cwd, "assignment-no-rewrite"),
+      taskFilePath("assignment-no-rewrite"),
       "utf8",
     );
     await writeAgentConfig({});
@@ -640,9 +636,9 @@ describe("enableAssignment persisted data", () => {
     await disabled.tools
       .get("task_list")
       .execute("c2", {}, undefined, undefined, ctx);
-    expect(
-      await readFile(taskFilePath(ctx.cwd, "assignment-no-rewrite"), "utf8"),
-    ).toBe(before);
+    expect(await readFile(taskFilePath("assignment-no-rewrite"), "utf8")).toBe(
+      before,
+    );
     expect(JSON.parse(before).tasks[0]).toMatchObject({
       assignment: { delegate: true, owner: "api" },
     });

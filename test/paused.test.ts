@@ -17,13 +17,22 @@ import {
 } from "../src/widget.js";
 
 const dirs: string[] = [];
+let savedAgentDir: string | undefined;
+let hadAgentDir = false;
 
-beforeEach(() => {
+beforeEach(async () => {
+  hadAgentDir = "PI_CODING_AGENT_DIR" in process.env;
+  savedAgentDir = process.env.PI_CODING_AGENT_DIR;
+  const agentDir = await mkdtemp(join(tmpdir(), "pi-task-paused-agent-"));
+  dirs.push(agentDir);
+  process.env.PI_CODING_AGENT_DIR = agentDir;
   vi.useFakeTimers();
 });
 
 afterEach(async () => {
   vi.useRealTimers();
+  if (hadAgentDir) process.env.PI_CODING_AGENT_DIR = savedAgentDir as string;
+  else delete process.env.PI_CODING_AGENT_DIR;
   await Promise.all(
     dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
   );

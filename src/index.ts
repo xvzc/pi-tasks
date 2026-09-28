@@ -6,8 +6,8 @@
  *
  * The tools are registered by the host/main Pi extension context only. This
  * extension implements no shared or subagent stores: every store is a
- * per-main-session file under `<cwd>/.pi/tasks/`, and subagents must not use
- * these tools.
+ * per-main-session file under `$PI_CODING_AGENT_DIR/tasks/`, and subagents
+ * must not use these tools.
  */
 
 import type {
@@ -338,8 +338,8 @@ async function refreshWidgetForSession(
 ): Promise<void> {
   try {
     const store = resetCompletedCycle
-      ? (await turnStartStore(ctx.cwd, sessionIdOf(ctx))).store
-      : await TaskStore.load(taskFilePath(ctx.cwd, sessionIdOf(ctx)));
+      ? (await turnStartStore(sessionIdOf(ctx))).store
+      : await TaskStore.load(taskFilePath(sessionIdOf(ctx)));
     refreshWidget(ctx, store);
   } catch {
     // Lifecycle refreshes must never break session startup, reload, resume, or turns.
@@ -498,9 +498,7 @@ ${TASK_MANAGEMENT_TAG_END}`;
   pi.registerCommand("tasks", {
     description: "View and clear session tasks.",
     handler: async (_args, ctx) => {
-      const store = await TaskStore.load(
-        taskFilePath(ctx.cwd, sessionIdOf(ctx)),
-      );
+      const store = await TaskStore.load(taskFilePath(sessionIdOf(ctx)));
       const [viewLabel, clearCompletedLabel, clearAllLabel] = tasksMenuLabels(
         store.list(),
       );
@@ -601,7 +599,7 @@ ${TASK_MANAGEMENT_TAG_END}`;
       _onUpdate,
       ctx,
     ) {
-      const filePath = taskFilePath(ctx.cwd, sessionIdOf(ctx));
+      const filePath = taskFilePath(sessionIdOf(ctx));
       const store = await TaskStore.load(filePath);
       try {
         if ("maxAttempts" in (params as unknown as Record<string, unknown>)) {
@@ -686,9 +684,7 @@ Lifecycle and dependency rules are evaluated from original state to the complete
       _onUpdate,
       ctx,
     ) {
-      const store = await TaskStore.load(
-        taskFilePath(ctx.cwd, sessionIdOf(ctx)),
-      );
+      const store = await TaskStore.load(taskFilePath(sessionIdOf(ctx)));
       try {
         const storeUpdates = params.updates.map((update) => ({
           ...update,
@@ -794,9 +790,7 @@ Details include dependencies, metadata, and the execution log.`,
       _ctx,
     ) {
       if (!isValidId(params.id)) return invalidIdResult(params.id);
-      const store = await TaskStore.load(
-        taskFilePath(_ctx.cwd, sessionIdOf(_ctx)),
-      );
+      const store = await TaskStore.load(taskFilePath(sessionIdOf(_ctx)));
       const task = store.get(params.id);
       if (!task) {
         const text = `Task #${params.id} does not exist.`;
@@ -863,9 +857,7 @@ Use it for an overview of task state across the session.`,
           ),
         );
       }
-      const store = await TaskStore.load(
-        taskFilePath(ctx.cwd, sessionIdOf(ctx)),
-      );
+      const store = await TaskStore.load(taskFilePath(sessionIdOf(ctx)));
       const allTasks = store.list();
       const tasks =
         status === undefined

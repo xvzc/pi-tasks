@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import {
   sanitizeSessionId,
@@ -12,18 +12,24 @@ import {
 } from "../src/store.js";
 
 const dirs: string[] = [];
+let savedAgentDir: string | undefined;
+let hadAgentDir = false;
+
+beforeEach(async () => {
+  hadAgentDir = "PI_CODING_AGENT_DIR" in process.env;
+  savedAgentDir = process.env.PI_CODING_AGENT_DIR;
+  const agentDir = await mkdtemp(join(tmpdir(), "pi-task-lifecycle-agent-"));
+  dirs.push(agentDir);
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+});
 
 afterEach(async () => {
+  if (hadAgentDir) process.env.PI_CODING_AGENT_DIR = savedAgentDir as string;
+  else delete process.env.PI_CODING_AGENT_DIR;
   await Promise.all(
     dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
   );
 });
-
-async function freshCwd(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "pi-task-lifecycle-"));
-  dirs.push(dir);
-  return dir;
-}
 
 describe("filename sanitization", () => {
   it("is deterministic, filename-safe, and collision-resistant", () => {
@@ -31,17 +37,27 @@ describe("filename sanitization", () => {
     expect(sanitized).toBe(sanitizeSessionId("a/b:c d"));
     expect(sanitized).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(sanitizeSessionId("a/b")).not.toBe(sanitizeSessionId("a:b"));
-    expect(taskFilePath("/work", "a/b")).toContain(
-      `/work/.pi/tasks/tasks-${sanitizeSessionId("a/b")}.json`,
+    expect(taskFilePath("a/b", "/agent")).toBe(
+      join("/agent", "tasks", `tasks-${sanitizeSessionId("a/b")}.json`),
+    );
+  });
+
+  it("resolves under PI_CODING_AGENT_DIR", () => {
+    const agentDir = process.env.PI_CODING_AGENT_DIR as string;
+    expect(taskFilePath("some-session")).toBe(
+      join(
+        agentDir,
+        "tasks",
+        `tasks-${sanitizeSessionId("some-session")}.json`,
+      ),
     );
   });
 });
 
 describe("turn lifecycle", () => {
   it("keeps the file on the same turn the final task completes", async () => {
-    const cwd = await freshCwd();
     const sessionId = "session-1";
-    const store = await TaskStore.load(taskFilePath(cwd, sessionId));
+    const store = await TaskStore.load(taskFilePath(sessionId));
     const a = await store.create({ subject: "a", description: "" });
     const b = await store.create({ subject: "b", description: "" });
     await store.update(a.id, { status: "in_progress", appendLog: "note" });
@@ -49,22 +65,21 @@ describe("turn lifecycle", () => {
     await store.update(b.id, { status: "in_progress", appendLog: "note" });
     await store.update(b.id, { status: "completed", appendLog: "note" });
     // Same-turn state: file still exists with both completed tasks.
-    const path = taskFilePath(cwd, sessionId);
+    const path = taskFilePath(sessionId);
     expect(existsSync(path)).toBe(true);
     const reloaded = await TaskStore.load(path);
     expect(reloaded.list()).toHaveLength(2);
   });
 
   it("archives an all-completed list at the next turn start while preserving nextId", async () => {
-    const cwd = await freshCwd();
     const sessionId = "session-1";
-    const path = taskFilePath(cwd, sessionId);
+    const path = taskFilePath(sessionId);
     const store = await TaskStore.load(path);
     const task = await store.create({ subject: "a", description: "" });
     await store.update(task.id, { status: "in_progress", appendLog: "start" });
     await store.update(task.id, { status: "completed", appendLog: "finished" });
 
-    const result = await turnStartStore(cwd, sessionId);
+    const result = await turnStartStore(sessionId);
     expect(result.cleaned).toBe(true);
     expect(result.store.list()).toEqual([]);
     expect(existsSync(path)).toBe(true);
@@ -94,9 +109,8 @@ describe("turn lifecycle", () => {
   });
 
   it("archives a mixed completed/deleted terminal cycle", async () => {
-    const cwd = await freshCwd();
     const sessionId = "mixed-terminal";
-    const store = await TaskStore.load(taskFilePath(cwd, sessionId));
+    const store = await TaskStore.load(taskFilePath(sessionId));
     const done = await store.create({ subject: "done", description: "" });
     const removed = await store.create({ subject: "removed", description: "" });
     await store.update(done.id, { status: "in_progress", appendLog: "note" });
@@ -106,7 +120,7 @@ describe("turn lifecycle", () => {
       appendLog: "out of scope",
     });
 
-    const result = await turnStartStore(cwd, sessionId);
+    const result = await turnStartStore(sessionId);
     expect(result.cleaned).toBe(true);
     expect(result.store.list()).toEqual([]);
     expect(result.store.listHistory()).toMatchObject([
@@ -124,9 +138,8 @@ describe("turn lifecycle", () => {
   });
 
   it("keeps create-time archival as a fallback for an all-completed store", async () => {
-    const cwd = await freshCwd();
     const sessionId = "session-1";
-    const path = taskFilePath(cwd, sessionId);
+    const path = taskFilePath(sessionId);
     const store = await TaskStore.load(path);
     const first = await store.create({ subject: "old", description: "" });
     await store.update(first.id, { status: "in_progress", appendLog: "note" });
@@ -148,9 +161,8 @@ describe("turn lifecycle", () => {
   });
 
   it("preserves completed active tasks when archive-on-create validation fails (invalid subject)", async () => {
-    const cwd = await freshCwd();
     const sessionId = "session-1";
-    const path = taskFilePath(cwd, sessionId);
+    const path = taskFilePath(sessionId);
     const store = await TaskStore.load(path);
     const task = await store.create({ subject: "old", description: "" });
     await store.update(task.id, { status: "in_progress", appendLog: "note" });
@@ -167,9 +179,8 @@ describe("turn lifecycle", () => {
   });
 
   it("preserves completed active tasks when archive-on-create references old tasks", async () => {
-    const cwd = await freshCwd();
     const sessionId = "session-1";
-    const path = taskFilePath(cwd, sessionId);
+    const path = taskFilePath(sessionId);
     const store = await TaskStore.load(path);
     const a = await store.create({ subject: "a", description: "" });
     const b = await store.create({ subject: "b", description: "" });
@@ -195,8 +206,7 @@ describe("turn lifecycle", () => {
   });
 
   it("preserves active completed tasks when archival persistence fails", async () => {
-    const cwd = await freshCwd();
-    const path = taskFilePath(cwd, "turn-reset-failure");
+    const path = taskFilePath("turn-reset-failure");
     const setup = await TaskStore.load(path);
     const task = await setup.create({ subject: "old", description: "" });
     await setup.update(task.id, { status: "in_progress", appendLog: "note" });
@@ -215,9 +225,8 @@ describe("turn lifecycle", () => {
   });
 
   it("preserves completed active tasks when archive-on-create persistence fails", async () => {
-    const cwd = await freshCwd();
     const sessionId = "session-1";
-    const path = taskFilePath(cwd, sessionId);
+    const path = taskFilePath(sessionId);
     const setup = await TaskStore.load(path);
     const task = await setup.create({ subject: "old", description: "" });
     await setup.update(task.id, { status: "in_progress", appendLog: "note" });
@@ -245,9 +254,8 @@ describe("turn lifecycle", () => {
   });
 
   it("appends with the existing nextId when any task is still active", async () => {
-    const cwd = await freshCwd();
     const sessionId = "session-1";
-    const path = taskFilePath(cwd, sessionId);
+    const path = taskFilePath(sessionId);
     const store = await TaskStore.load(path);
     const a = await store.create({ subject: "a", description: "" });
     await store.create({ subject: "b", description: "" });
@@ -261,9 +269,8 @@ describe("turn lifecycle", () => {
   });
 
   it("appends multiple completed cycles without overwriting prior history", async () => {
-    const cwd = await freshCwd();
     const sessionId = "history-cycles";
-    const path = taskFilePath(cwd, sessionId);
+    const path = taskFilePath(sessionId);
     const firstStore = await TaskStore.load(path);
     const first = await firstStore.create({
       subject: "first",
@@ -277,7 +284,7 @@ describe("turn lifecycle", () => {
       status: "completed",
       appendLog: "note",
     });
-    await turnStartStore(cwd, sessionId);
+    await turnStartStore(sessionId);
 
     const secondStore = await TaskStore.load(path);
     const second = await secondStore.create({
@@ -293,7 +300,7 @@ describe("turn lifecycle", () => {
       status: "completed",
       appendLog: "note",
     });
-    const result = await turnStartStore(cwd, sessionId);
+    const result = await turnStartStore(sessionId);
 
     expect(result.store.list()).toEqual([]);
     expect(
@@ -308,31 +315,28 @@ describe("turn lifecycle", () => {
   });
 
   it("keeps files with pending or mixed tasks at turn start", async () => {
-    const cwd = await freshCwd();
     const sessionId = "session-1";
-    const store = await TaskStore.load(taskFilePath(cwd, sessionId));
+    const store = await TaskStore.load(taskFilePath(sessionId));
     const a = await store.create({ subject: "a", description: "" });
     await store.create({ subject: "b", description: "" });
     await store.update(a.id, { status: "in_progress", appendLog: "note" });
     await store.update(a.id, { status: "completed", appendLog: "note" });
 
-    const result = await turnStartStore(cwd, sessionId);
+    const result = await turnStartStore(sessionId);
     expect(result.cleaned).toBe(false);
     expect(result.store.list()).toHaveLength(2);
-    expect(existsSync(taskFilePath(cwd, sessionId))).toBe(true);
+    expect(existsSync(taskFilePath(sessionId))).toBe(true);
   });
 
   it("does nothing when no file exists at turn start", async () => {
-    const cwd = await freshCwd();
-    const result = await turnStartStore(cwd, "never-seen");
+    const result = await turnStartStore("never-seen");
     expect(result.cleaned).toBe(false);
     expect(result.store.list()).toEqual([]);
   });
 
   it("preserves monotonic IDs when archiving on create after reload", async () => {
-    const cwd = await freshCwd();
     const sessionId = "session-1";
-    const path = taskFilePath(cwd, sessionId);
+    const path = taskFilePath(sessionId);
     const store = await TaskStore.load(path);
     const first = await store.create({ subject: "old", description: "" });
     await store.update(first.id, { status: "in_progress", appendLog: "note" });
@@ -350,16 +354,15 @@ describe("turn lifecycle", () => {
 
 describe("attempt counters across turn lifecycle", () => {
   it("persists attempt counters when the file is kept at turn start", async () => {
-    const cwd = await freshCwd();
     const sessionId = "attempt-session";
-    const store = await TaskStore.load(taskFilePath(cwd, sessionId));
+    const store = await TaskStore.load(taskFilePath(sessionId));
     const task = await store.create({
       subject: "a",
       description: "",
       maxAttempts: 3,
     });
     await store.update(task.id, { status: "in_progress", appendLog: "note" });
-    const result = await turnStartStore(cwd, sessionId);
+    const result = await turnStartStore(sessionId);
     expect(result.cleaned).toBe(false);
     expect(result.store.get(task.id)).toMatchObject({
       attempt: 1,
