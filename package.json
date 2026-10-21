@@ -28,21 +28,21 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
-  },
-  "dependencies": {
-    "@earendil-works/pi-tui": "^0.85.1",
-    "typebox": "^1.1.24"
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.2.2",
+    "@earendil-works/pi-tui": "^0.85.1",
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.0.0",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.12.0",
     "prettier": "^3.9.9",
+    "typebox": "^1.1.24",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.70.1",
     "vitest": "^4.0.18"
