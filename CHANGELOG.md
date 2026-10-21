@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/xvzc/pi-tasks/compare/v1.4.1...v1.4.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* declare host-provided packages as peer dependencies ([4d7ab59](https://github.com/xvzc/pi-tasks/commit/4d7ab59f50834822e23c9205348c42bdb488a520))
+
 ## [1.4.1](https://github.com/xvzc/pi-tasks/compare/v1.4.0...v1.4.1) (2026-09-28)
 
 
